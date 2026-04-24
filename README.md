@@ -1,16 +1,19 @@
 # Dynamic Shadows
 
-Este mod añade sombras dinámicas a Mindustry v7. Las sombras rotan según la posición del sol en un ciclo de 11 minutos y medio. 
+This mod adds dynamic shadows to Mindustry v7. The shadows rotate according to the sun's position in an 11.5-minute cycle.
 
-Características:
-- Sombras suaves para bloques y unidades.
-- Variaciones de altura aleatorias.
-- Compatible con multijugador (no necesitas que el servidor lo tenga).
-- Funciona en PC y Android.
+Features:
+- Soft shadows for blocks and units.
 
-Instalación:
-Descarga el archivo .jar de la sección de Releases y ponlo en tu carpeta de mods de Mindustry.
+- Random height variations.
 
-Compilación:
-Si quieres compilarlo tú mismo, usa:
+- Multiplayer compatible (server doesn't need to support it).
+
+- Works on PC and Android.
+
+Installation:
+Download the .jar file from the Releases section and place it in your Mindustry mods folder.
+
+Compilation:
+If you want to compile it yourself, use:
 ./gradlew deploy
