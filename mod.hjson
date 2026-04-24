@@ -2,8 +2,9 @@ displayName: "Dynamic Shadows"
 name: "dynamic-shadows"
 author: "Arksource"
 main: "dynamicShadows.Main"
-description: "Standalone high-fidelity dynamic shadow system extracted from Project Polaris."
+description: "Standalone high-fidelity dynamic shadow system extracted from Project Polaris. [scarlet]⚠ This mod is a pre-release It may be incomplete or contain errors"
 version: 0.6.157.4
 minGameVersion: 157.4
 java: true
 hidden: true
+repo: "Arksource/DynamicShadows"
