@@ -1,0 +1,9 @@
+displayName: "Dynamic Shadows"
+name: "dynamic-shadows"
+author: "Arksource"
+main: "dynamicShadows.Main"
+description: "Standalone high-fidelity dynamic shadow system extracted from Project Polaris."
+version: 0.6.157.4
+minGameVersion: 157.4
+java: true
+hidden: true

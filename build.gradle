@@ -1,0 +1,107 @@
+apply plugin: "java"
+
+version = '1.0'
+
+sourceSets.main.java.srcDirs = ["src"]
+
+repositories {
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+    maven { url "https://maven.xpdustry.com/mindustry" }
+}
+
+java {
+    targetCompatibility = 8
+    sourceCompatibility = 1.8
+}
+
+ext {
+    mVersion = project.hasProperty("mindustryVersion") ? mindustryVersion : 'v157'
+    aVersion = project.hasProperty("arcVersion") ? arcVersion : 'v157'
+    mArtifact = project.hasProperty("modArtifact") ? modArtifact : project.name
+    
+    isWindows = System.getProperty("os.name").toLowerCase().contains("windows")
+    sdkRoot = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
+}
+
+dependencies {
+    compileOnly "com.github.Anuken.Arc:arc-core:$aVersion"
+    compileOnly "com.github.Anuken.Mindustry:core:$mVersion"
+}
+
+// 1. Tarea principal: Crea el mod para PC
+jar {
+    archiveFileName = "${mArtifact}.jar"
+    
+    // Incluir manifiesto, código e icono
+    from(projectDir) {
+        include "mod.hjson"
+        include "icon.png"
+    }
+    from(sourceSets.main.output)
+    
+    // Incluir assets
+    if(new File(projectDir, "assets").exists()){
+        from("assets/"){
+            into("assets/")
+        }
+    }
+    
+    // Incluir dependencias si las hubiera
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}
+
+// 2. Tarea Android: Genera el DEX y lo mete dentro del JAR anterior
+tasks.register('deploy') {
+    dependsOn "jar"
+
+    doLast {
+        def d8Path = ""
+        def d8Jar = new File(projectDir, "d8.jar")
+        def finalJar = new File(projectDir, "build/libs/${mArtifact}.jar")
+        def dexFile = new File(projectDir, "build/libs/classes.dex")
+
+        // Buscar d8
+        if (sdkRoot && new File(sdkRoot).exists()) {
+            def platformRoot = new File("$sdkRoot/platforms/").listFiles()?.sort()?.reverse()?.find { f -> new File(f, "android.jar").exists() }
+            if (platformRoot) {
+                def d8 = isWindows ? "d8.bat" : "d8"
+                def buildTools = new File("$sdkRoot/build-tools/").listFiles()?.sort()?.reverse()?.find { f -> new File(f, d8).exists() }
+                if (buildTools) d8Path = new File(buildTools, d8).absolutePath
+                else d8Path = d8
+            }
+        }
+
+        if (d8Path == "") {
+            if (!d8Jar.exists()) {
+                println "Descargando d8.jar portátil..."
+                new URL("https://github.com/Anuken/Mindustry/releases/download/v146/d8.jar").withInputStream { i -> d8Jar.withOutputStream { it << i } }
+            }
+            d8Path = "java -cp d8.jar com.android.tools.r8.D8"
+        }
+
+        println "Generando DEX para Android..."
+        
+        // Ejecutar d8 (salida a una carpeta temporal para sacar el classes.dex)
+        def tempDir = new File(projectDir, "build/libs/dex-temp")
+        tempDir.mkdirs()
+        def cmd = "$d8Path --min-api 14 --output ${tempDir.absolutePath} ${finalJar.absolutePath}"
+        def process = cmd.execute(null, projectDir)
+        process.waitForProcessOutput(System.out, System.err)
+        
+        if (process.exitValue() == 0) {
+            println "Inyectando DEX en el JAR final..."
+            // Usar el comando 'jar' del JDK para añadir el classes.dex al JAR original
+            def jarCmd = "jar uf ${finalJar.absolutePath} -C ${tempDir.absolutePath} classes.dex"
+            def jarProcess = jarCmd.execute(null, projectDir)
+            jarProcess.waitForProcessOutput(System.out, System.err)
+            
+            delete tempDir
+            println "¡ÉXITO TOTAL! Mod multiplataforma listo en: build/libs/${mArtifact}.jar"
+        } else {
+            throw new GradleException("Fallo al generar el soporte de Android.")
+        }
+    }
+}
