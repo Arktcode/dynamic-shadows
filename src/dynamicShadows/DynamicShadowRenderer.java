@@ -15,51 +15,83 @@ import mindustry.world.Block;
 import mindustry.world.Tile;
 
 /**
- * DynamicShadowRenderer — sombras 2D con ciclo día/noche.
- * Versión Standalone.
+ * Enhanced DynamicShadowRenderer
+ * 
  * @author Arksource
  * @category DynamicShadows
  */
 public class DynamicShadowRenderer {
 
-    //Configuration of the shadows
+    // Configuration of the shadows
     public static float BASE_SHADOW_ANGLE = 210f;
     public static float SHADOW_LENGTH = 10f;
     public static float SHADOW_ALPHA = 0.38f;
     public static float weatherMult = 1f;
     public static boolean enabled = true;
+    public static boolean dayNightCycle = true;
 
-    //Internal State
     private static FrameBuffer fbo;
+    private static FrameBuffer fbo2;
     private static TextureRegion fboRegion;
+    private static TextureRegion fboRegion2;
+    private static BlurShader blurShader;
     private static final ObjectFloatMap<Block> elevCache = new ObjectFloatMap<>(64);
     private static final Seq<float[]> lightPoints = new Seq<>(false, 16);
+    private static TextureRegion emptyRegion;
 
     public static void queue() {
         if (!enabled || Vars.headless || !Vars.state.isGame())
             return;
 
-        float darkness = 0f;
-        if (Vars.state.rules != null && Vars.state.rules.ambientLight != null) {
-            darkness = Mathf.clamp(Vars.state.rules.ambientLight.a);
+        if (emptyRegion == null) {
+            emptyRegion = Core.atlas.find("clear");
         }
 
-        //11 min and 30 sec (690s).
-        final float rotationTicks = 690f * 60f;
-        final float angle = BASE_SHADOW_ANGLE + (arc.util.Time.time / rotationTicks) * 360f;
-        
+        // El ciclo total dura 27 minutos.
+        final float rotationTicks = 1620f * 60f;
+        final float cycleProgress = (arc.util.Time.time / rotationTicks) % 1f;
+
+        final float angle = BASE_SHADOW_ANGLE + cycleProgress * 360f;
+
         final float cosA = Mathf.cosDeg(angle);
         final float sinA = Mathf.sinDeg(angle);
 
+        float darkness = 0f;
+        if (dayNightCycle) {
+            float sunHeight = Mathf.sin(cycleProgress * Mathf.PI * 2f);
+            if (sunHeight < 0.64f) {
+                // Suavizamos la caída de la oscuridad
+                float nightProgress = (0.64f - sunHeight) / 1.64f;
+                // 70% de oscuridad máxima
+                darkness = Mathf.clamp(nightProgress * 0.80f, 0f, 0.70f);
+            }
+            if (Vars.state.rules != null) {
+                Vars.state.rules.lighting = true;
+                if (Vars.state.rules.ambientLight == null)
+                    Vars.state.rules.ambientLight = new Color(0, 0, 0, 0);
+
+                Vars.state.rules.ambientLight.r = 0f;
+                Vars.state.rules.ambientLight.g = 0f;
+                Vars.state.rules.ambientLight.b = 0f;
+                Vars.state.rules.ambientLight.a = darkness;
+            }
+        } else {
+
+            if (Vars.state.rules != null && Vars.state.rules.ambientLight != null) {
+                darkness = Mathf.clamp(Vars.state.rules.ambientLight.a);
+            }
+        }
+
         final float shadowLen = SHADOW_LENGTH * Vars.tilesize * (1f + darkness * 1.2f);
+        final float alpha = SHADOW_ALPHA * Mathf.clamp(weatherMult) * (1f - darkness * 0.5f);
 
-        final float alpha = SHADOW_ALPHA * Mathf.clamp(weatherMult) * (0.7f + darkness * 0.3f);
-
-        // Desactiva la sombra original vaciando su textura :p.
         Vars.content.units().each(type -> {
             AnyBlocksShadows.getOriginalShadow(type);
-            type.shadowRegion = new arc.graphics.g2d.TextureRegion();
+            if (type.shadowRegion != emptyRegion) {
+                type.shadowRegion = emptyRegion;
+            }
         });
+
         final float camX = Core.camera.position.x;
         final float camY = Core.camera.position.y;
         final float camW = Core.camera.width;
@@ -87,23 +119,43 @@ public class DynamicShadowRenderer {
                 }
             }
         }
+
         final float[][] lights = lightPoints.toArray(float[].class);
         final float fDarkness = darkness;
 
-        Draw.draw(Layer.floor + 0.1f, () -> {
-            // Preparar FBO
+        Draw.draw(Layer.blockUnder, () -> {
             int gw = Core.graphics.getWidth();
             int gh = Core.graphics.getHeight();
-            if (fbo == null || fbo.getWidth() != gw || fbo.getHeight() != gh) {
-                if (fbo != null)
-                    fbo.dispose();
-                fbo = new FrameBuffer(gw, gh);
-                fboRegion = new TextureRegion(fbo.getTexture());
-                fboRegion.flip(false, true);
+            boolean fboInvalid = fbo == null || fbo.getWidth() != gw || fbo.getHeight() != gh
+                    || fbo.getTexture() == null || fbo.getTexture().getTextureObjectHandle() == 0;
+
+            if (fboInvalid) {
+                if (fbo != null) {
+                    try {
+                        fbo.dispose();
+                    } catch (Exception ignored) {
+                    }
+                }
+                if (fbo2 != null) {
+                    try {
+                        fbo2.dispose();
+                    } catch (Exception ignored) {
+                    }
+                }
+                try {
+                    fbo = new FrameBuffer(gw, gh);
+                    fboRegion = new TextureRegion(fbo.getTexture());
+                    fboRegion.flip(false, true);
+
+                    fbo2 = new FrameBuffer(gw, gh);
+                    fboRegion2 = new TextureRegion(fbo2.getTexture());
+                    fboRegion2.flip(false, true);
+                } catch (Exception e) {
+                    return;
+                }
             }
 
             Draw.flush();
-
             fbo.begin(Color.clear);
             Draw.color(Color.black, 1f);
 
@@ -123,7 +175,7 @@ public class DynamicShadowRenderer {
 
                     float cx = isBuild ? tile.build.x : tile.worldx();
                     float cy = isBuild ? tile.build.y : tile.worldy();
-                    float size = isBuild ? tile.build.block.size * Vars.tilesize : Vars.tilesize;
+                    float size = (isBuild ? tile.build.block.size * Vars.tilesize : Vars.tilesize) + 0.5f;
 
                     float elev = isBuild ? getElev(tile.build.block, 1f)
                             : getElev(tile.block(), 1.6f);
@@ -154,21 +206,10 @@ public class DynamicShadowRenderer {
                 }
             }
 
-            // 1B. Draw shadows of units
-            mindustry.gen.Groups.unit.intersect(camX - margin, camY - margin, camW + margin * 2f, camH + margin * 2f,
-                    u -> {
-                        float uElev = 1.0f + u.elevation * 2.8f;
-                        float fl = shadowLen * uElev * 0.025f;
-
-                        Draw.rect(AnyBlocksShadows.getOriginalShadow(u.type), u.x + cosA * fl, u.y + sinA * fl,
-                                u.rotation - 90);
-                    });
-
             Draw.flush();
             Draw.blend(arc.graphics.Blending.disabled);
             Draw.color(Color.clear);
 
-            // 2A. Delete shadow of space and void tiles
             for (int x = tx1; x <= tx2; x++) {
                 for (int y = ty1; y <= ty2; y++) {
                     Tile tile = Vars.world.tile(x, y);
@@ -194,7 +235,6 @@ public class DynamicShadowRenderer {
                 }
             }
 
-            // 2.5. Hole shadows
             for (float[] lp : lights) {
                 AnyBlocksShadows.drawOccludedLight(lp[0], lp[1], 32f);
             }
@@ -203,11 +243,44 @@ public class DynamicShadowRenderer {
             Draw.blend(arc.graphics.Blending.normal);
             fbo.end();
 
-            // Draw FBO
-            Draw.color(Color.white, alpha);
-            Draw.rect(fboRegion, camX, camY, camW, camH);
+            // Iniciar FBO2
+            fbo2.begin(Color.clear);
 
-            Draw.color();
+            // Dibujar FBO1 (Bloques) hacia FBO2 aplicando Blur
+            if (fboRegion != null && fboRegion.texture != null) {
+                if (blurShader == null)
+                    blurShader = new BlurShader();
+                blurShader.radius = 4.0f;
+                Draw.blend(arc.graphics.Blending.disabled);
+                Draw.flush();
+                Draw.shader(blurShader);
+                Draw.color(Color.white, 1f);
+                Draw.rect(fboRegion, camX, camY, camW, camH);
+                Draw.flush();
+                Draw.shader();
+                Draw.blend(arc.graphics.Blending.normal);
+            }
+
+            // Dibujar sombras de unidades (Nítidas) directamente sobre FBO2
+            Draw.color(Color.black, 1f);
+            mindustry.gen.Groups.unit.intersect(camX - margin, camY - margin, camW + margin * 2f, camH + margin * 2f,
+                    u -> {
+                        float uElev = 1.0f + u.elevation * 2.8f;
+                        float fl = shadowLen * uElev * 0.025f;
+
+                        TextureRegion uShadow = AnyBlocksShadows.getOriginalShadow(u.type);
+                        if (uShadow != null && uShadow.found()) {
+                            Draw.rect(uShadow, u.x + cosA * fl, u.y + sinA * fl, u.rotation - 90);
+                        }
+                    });
+            Draw.flush();
+            fbo2.end();
+
+            if (fboRegion2 != null && fboRegion2.texture != null) {
+                Draw.color(Color.white, alpha);
+                Draw.rect(fboRegion2, camX, camY, camW, camH);
+                Draw.color();
+            }
         });
     }
 

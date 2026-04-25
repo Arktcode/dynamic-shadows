@@ -43,7 +43,7 @@ jar {
     // Incluir assets
     if(new File(projectDir, "assets").exists()){
         from("assets/"){
-            into("assets/")
+            into("")
         }
     }
     
