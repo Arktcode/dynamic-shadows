@@ -18,4 +18,5 @@ Compilation:
 If you want to compile it yourself, use:
 ./gradlew deploy
 
-<img width="1366" height="715" alt="image" src="https://github.com/user-attachments/assets/67941386-d603-4997-bd74-410b1b6b554a" />
+<img width="1366" height="715" alt="image" src="https://github.com/user-attachments/assets/67941386-d603-4997-bd74-410b1b6b554a" /> <img width="1366" height="768" alt="image" src="https://github.com/user-attachments/assets/0f17657c-9197-4162-ac6e-da8477c4e6a4" />
+
