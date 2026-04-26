@@ -7,7 +7,7 @@ varying vec4 v_color;
 varying vec2 v_texCoord;
 
 void main() {
-   v_color = a_color;
+   v_color    = a_color;
    v_texCoord = a_texCoord0;
    gl_Position = u_projTrans * a_position;
 }
