@@ -3,7 +3,7 @@ name: "dynamic-shadows"
 author: "Arksource"
 main: "dynamicShadows.Main"
 description: "Standalone high-fidelity dynamic shadow system with cinematic day/night cycles and dual-pass rendering."
-version: 0.7.157.4
+version: 0.85.157.4
 minGameVersion: 157.4
 java: true
 hidden: true
