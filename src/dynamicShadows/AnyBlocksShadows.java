@@ -51,11 +51,6 @@ public class AnyBlocksShadows {
         return mod;
     }
 
-    /**
-     * Draws a shadow volume using UNIFORM alpha on every quad.
-     * KEY FIX: All quads share the same Draw color/alpha so overlapping regions
-     * do NOT produce darker triangles. The shadow.frag shader handles soft edge :P
-     */
     public static void draw(float cx, float cy, float size, float len, float cosA, float sinA) {
         float hs = size * 0.5f;
         float sdx = cosA * len;
