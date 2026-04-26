@@ -19,7 +19,7 @@ public class Main extends Mod {
                             t.pref(new mindustry.ui.dialogs.SettingsMenuDialog.SettingsTable.Setting("") {
                                 @Override
                                 public void add(mindustry.ui.dialogs.SettingsMenuDialog.SettingsTable table) {
-                                    table.add(Core.bundle.get("settings.dynamic_shadows.header", "Sombras de Unidades"))
+                                    table.add(Core.bundle.get("settings.dynamic_shadows.header", "Dynamic Shadows"))
                                             .color(arc.graphics.Color.valueOf("fed17b")).padTop(12f).padBottom(6f)
                                             .row();
                                 }
