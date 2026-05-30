@@ -3,8 +3,9 @@ package dynamicShadows;
 import arc.graphics.g2d.*;
 import arc.math.Mathf;
 import arc.struct.ObjectMap;
-import mindustry.core.World;
+import mindustry.Vars;
 import mindustry.world.Block;
+import mindustry.world.blocks.environment.TreeBlock;
 import mindustry.world.blocks.power.*;
 
 public class AnyBlocksShadows {
@@ -51,6 +52,11 @@ public class AnyBlocksShadows {
         return mod;
     }
 
+    /**
+     * Draws a shadow volume using UNIFORM alpha on every quad.
+     * KEY FIX: All quads share the same Draw color/alpha so overlapping regions
+     * do NOT produce darker triangles. The shadow.frag shader handles soft edge :P
+     */
     public static void draw(float cx, float cy, float size, float len, float cosA, float sinA) {
         float hs = size * 0.5f;
         float sdx = cosA * len;
@@ -89,48 +95,124 @@ public class AnyBlocksShadows {
         return ((h & 0xFFFF) / 32767.5f) - 1.0f;
     }
 
-    public static void drawOccludedLight(float lx, float ly, float radius) {
-        int segments = 40;
-        float angleStep = 360f / segments;
 
-        for (int i = 0; i < segments; i++) {
-            float a1 = i * angleStep;
-            float a2 = (i + 1) * angleStep;
-            float d1 = cast(lx, ly, a1, radius);
-            float d2 = cast(lx, ly, a2, radius);
-            float x1 = lx + arc.math.Mathf.cosDeg(a1) * d1;
-            float y1 = ly + arc.math.Mathf.sinDeg(a1) * d1;
-            float x2 = lx + arc.math.Mathf.cosDeg(a2) * d2;
-            float y2 = ly + arc.math.Mathf.sinDeg(a2) * d2;
-            Fill.tri(lx, ly, x1, y1, x2, y2);
-        }
-    }
-
-    private static float cast(float lx, float ly, float angle, float radius) {
-        final float[] result = { radius };
-        float dx = arc.math.Mathf.cosDeg(angle);
-        float dy = arc.math.Mathf.sinDeg(angle);
-
-        World.raycastEachWorld(lx, ly, lx + dx * radius, ly + dy * radius, (x, y) -> {
-            mindustry.world.Tile tile = mindustry.Vars.world.tile(x, y);
-            if (tile != null && tile.block().solid) {
-                if (Math.abs(tile.worldx() - lx) < 1f && Math.abs(tile.worldy() - ly) < 1f)
-                    return false;
-                float d = arc.math.Mathf.dst(lx, ly, tile.worldx(), tile.worldy());
-                if (d < result[0])
-                    result[0] = d;
-                return true;
-            }
-            return false;
-        });
-
-        return result[0];
-    }
 
     public static arc.graphics.g2d.TextureRegion getOriginalShadow(mindustry.type.UnitType type) {
         if (!unitShadowCache.containsKey(type)) {
             unitShadowCache.put(type, type.shadowRegion);
         }
         return unitShadowCache.get(type);
+    }
+
+    // Prop shadow system
+
+    /** Shadow rendering category for environment props. */
+    public enum PropShadowType { TREE, ORB, SPIKE, GENERIC }
+
+    // Per-block caches — filled once on first encounter, never GC-pressured
+    private static final ObjectMap<Block, PropShadowType> propTypeCache = new ObjectMap<>(64);
+    private static final ObjectMap<Block, Float>          propElevCache = new ObjectMap<>(64);
+
+    /**
+     * Classifies a prop into a shadow rendering category.
+     * Result is cached per block — zero cost on subsequent calls.
+     */
+    public static PropShadowType getPropType(Block block, TextureRegion region) {
+        if (propTypeCache.containsKey(block)) return propTypeCache.get(block);
+
+        PropShadowType type;
+        String name = block.name.toLowerCase();
+
+        if (block instanceof TreeBlock) {
+            // Mindustry tree class tall plant shadow
+            type = PropShadowType.TREE;
+        } else if (name.contains("orb") || name.contains("sphere") || name.contains("ball")) {
+            type = PropShadowType.ORB;
+        } else if (name.contains("spike") || name.contains("thorn") || name.contains("needle")) {
+            type = PropShadowType.SPIKE;
+        } else if (region != null && region.found()) {
+            float ar = region.height / (float) Math.max(region.width, 1);
+            type = (ar > 1.4f) ? PropShadowType.TREE : PropShadowType.GENERIC;
+        } else {
+            type = PropShadowType.GENERIC;
+        }
+
+        propTypeCache.put(block, type);
+        return type;
+    }
+
+    /**
+     * Estimates the "height" of a prop from its sprite dimensions.
+     * Taller sprites produce longer shadows at the same sun angle.
+     * Result is cached per block — zero cost on subsequent calls.
+     */
+    public static float getPropElevation(Block block, TextureRegion region) {
+        if (propElevCache.containsKey(block)) return propElevCache.get(block, 0.3f);
+        float propH = region.height * Draw.scl;
+        // Normalize by 2× tile height so a 2-tile-tall sprite = elevation 1.0
+        float elev = Mathf.clamp(propH / (Vars.tilesize * 2f), 0.08f, 1.80f);
+        propElevCache.put(block, elev);
+        return elev;
+    }
+
+    /**
+     * Draws a realistic prop shadow:
+     *  1. A contact disk at the prop base (shows it is grounded).
+     *  2. A body shadow displaced in the sun direction, shaped by PropShadowType.
+     * Caller must set Draw.color to the desired shadow color before calling.
+     * This method may temporarily change Draw.color for the contact disk,
+     * and restores it before drawing the body shadow.
+     *
+     * @param cx            prop world X
+     * @param cy            prop world Y
+     * @param region        sprite region (used for width/height reference)
+     * @param type          shadow shape category
+     * @param propLen       world-space shadow body length
+     * @param cosA          cos of sun direction angle
+     * @param sinA          sin of sun direction angle
+     * @param angle         sun direction angle in degrees (for Draw.rect rotation)
+     * @param contactAlpha  opacity of contact disk (0 = skip)
+     */
+    public static void drawPropShadow(float cx, float cy, TextureRegion region,
+            PropShadowType type, float propLen, float cosA, float sinA, float angle,
+            float contactAlpha) {
+
+        float propW = region.width  * Draw.scl;
+
+        if (contactAlpha > 0.005f) {
+            Draw.color(0.02f, 0.015f, 0.04f, contactAlpha);
+            Fill.circle(cx, cy, propW * 0.40f);
+            // Restore body-shadow color
+            Draw.color(0.04f, 0.03f, 0.08f, 1f);
+        }
+        switch (type) {
+            case ORB:
+                Fill.circle(cx + cosA * propLen * 0.35f,
+                            cy + sinA * propLen * 0.35f,
+                            propW * 0.30f);
+                break;
+
+            case SPIKE: {
+                float bx = cx + cosA * propLen * 0.49f;
+                float by = cy + sinA * propLen * 0.49f;
+                Draw.rect(region, bx, by, propW * 0.40f, propLen, angle - 90f);
+                break;
+            }
+
+            case TREE: {
+                float bx = cx + cosA * propLen * 0.49f;
+                float by = cy + sinA * propLen * 0.49f;
+                Draw.rect(region, bx, by, propW * 0.85f, propLen, angle - 90f);
+                break;
+            }
+
+            default: {
+                float actualLen = propLen * 0.65f;
+                float bx = cx + cosA * actualLen * 0.49f;
+                float by = cy + sinA * actualLen * 0.49f;
+                Draw.rect(region, bx, by, propW * 0.85f, actualLen, angle - 90f);
+                break;
+            }
+        }
     }
 }
