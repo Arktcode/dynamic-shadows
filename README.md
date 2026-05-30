@@ -9,7 +9,8 @@ Features:
 
 - Multiplayer compatible (server doesn't need to support it).
 
-- Works on PC and Android.
+> [!TIP] Works on PC and Android.
+>
 
 Installation:
 Download the .jar file from the Releases section and place it in your Mindustry mods folder.
