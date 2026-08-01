@@ -12,7 +12,7 @@ public class Main extends Mod {
 
     @Override
     public void init() {
-        // Initialise shadow renderer
+        // Inicializar renderizador de sombras
 
         Events.on(EventType.ClientLoadEvent.class, e -> {
             if (!mindustry.Vars.headless) {
@@ -20,7 +20,7 @@ public class Main extends Mod {
                     Core.bundle.get("settings.dynamic_shadows.category", "Shaders"),
                     mindustry.gen.Icon.settings, t -> {
 
-                    // Dynamic Shadows header
+                    // Encabezado de Sombras Dinámicas
                     t.pref(new mindustry.ui.dialogs.SettingsMenuDialog.SettingsTable.Setting("") {
                         @Override
                         public void add(mindustry.ui.dialogs.SettingsMenuDialog.SettingsTable table) {
@@ -34,6 +34,10 @@ public class Main extends Mod {
                         DynamicShadowRenderer.updateUnitShadows();
                     });
                     t.checkPref("day_night_cycle",         true,  val -> DynamicShadowRenderer.dayNightCycle = val);
+                    t.checkPref("static_shadows",           false, val -> {
+                        DynamicShadowRenderer.rotateShadows = !val;
+                        DynamicShadowRenderer.ChunkCache.invalidateAll();
+                    });
                     t.checkPref("dynamic_unit_shadows",    true,  val -> {
                         DynamicShadowRenderer.unitShadowsEnabled = val;
                         DynamicShadowRenderer.updateUnitShadows();
@@ -77,16 +81,14 @@ public class Main extends Mod {
                         DynamicShadowRenderer.darkFadeStrength = s / 100f;
                         return s + "%";
                     });
-
-                    // God-rays / Dynamic Lights
-                    // (renderers not available in this build)
                 });
             }
 
-            // Restore persisted settings
+            // Restaurar configuraciones guardadas
             DynamicShadowRenderer.graphicsQuality    = Core.settings.getInt ("graphics_quality",            2);
             DynamicShadowRenderer.enabled            = Core.settings.getBool("dynamic_shadows_enabled",     true);
             DynamicShadowRenderer.dayNightCycle      = Core.settings.getBool("day_night_cycle",             true);
+            DynamicShadowRenderer.rotateShadows       = !Core.settings.getBool("static_shadows",            false);
             DynamicShadowRenderer.unitShadowsEnabled = Core.settings.getBool("dynamic_unit_shadows",        true);
             int pScaleVal = Core.settings.getInt("prop_shadow_scale", 100);
             DynamicShadowRenderer.propShadowScale    = pScaleVal / 100f;
@@ -98,7 +100,7 @@ public class Main extends Mod {
             DynamicShadowRenderer.contactShadow      = Core.settings.getInt ("contact_shadow_percent",       45) / 100f;
             DynamicShadowRenderer.darkFadeStrength   = Core.settings.getInt ("dark_fade_percent",            80) / 100f;
 
-            // Apply unit shadows initial configuration
+            // Aplicar configuración inicial de sombras de unidades
             DynamicShadowRenderer.updateUnitShadows();
         });
 

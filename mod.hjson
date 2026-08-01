@@ -2,9 +2,12 @@ displayName: "Dynamic Shadows"
 name: "dynamic-shadows"
 author: "Arksource"
 main: "dynamicShadows.Main"
-description: "Standalone high-fidelity dynamic shadow system with cinematic day/night cycles and dual-pass rendering."
-version: 1.05.158.1
-minGameVersion: 158.1
+description: "Standalone high-fidelity dynamic shadow system
+The first Shadow [[]#fed17b]Shaders [[]white]for Mindustry.
+
+[[]crimson]!NOTE: [[]white]These can be quite large [[]gray](not recommended for low-end devices).."
+version: 1.1.159.7
+minGameVersion: 159.7
 java: true
 hidden: true
 repo: "Arktcode/dynamic-shadows"
