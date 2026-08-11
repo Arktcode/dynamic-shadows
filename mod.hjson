@@ -1,0 +1,13 @@
+displayName: "Dynamic Shadows"
+name: "dynamic-shadows"
+author: "Arksource"
+main: "dynamicShadows.Main"
+description: "Standalone high-fidelity dynamic shadow system
+The first Shadow [[]#fed17b]Shaders [[]white]for Mindustry.
+
+[[]crimson]!NOTE: [[]white]These can be quite large [[]gray](not recommended for low-end devices).."
+version: 1.5.159.7
+minGameVersion: 159.7
+java: true
+hidden: true
+repo: "Arktcode/dynamic-shadows"
