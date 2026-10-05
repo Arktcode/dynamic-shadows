@@ -73,7 +73,10 @@ tasks.register('deploy') {
         def androidJar = null
         // Buscar d8
         if (sdkRoot && new File(sdkRoot).exists()) {
-            def platformRoot = new File("$sdkRoot/platforms/").listFiles()?.sort()?.reverse()?.find { f -> new File(f, "android.jar").exists() }
+            def platformRoot = new File("$sdkRoot/platforms/").listFiles()?.findAll { f ->
+                def jar = new File(f, "android.jar")
+                return jar.isFile() && jar.length() > 0 && !f.name.contains("beta") && !f.name.contains("preview")
+            }?.sort()?.reverse()?.find { true }
             if (platformRoot) {
                 androidJar = new File(platformRoot, "android.jar")
                 def d8 = isWindows ? "d8.bat" : "d8"
@@ -98,23 +101,34 @@ tasks.register('deploy') {
         delete tempDir
         tempDir.mkdirs()
 
-        // Empacar clases limpias en un jar temporal para D8 (evita que falle si finalJar ya contenía un dex previo)
+        // Empacar clases limpias en un jar temporal para D8 sin problemas de comillas en Linux
         def rawClassesJar = new File(tempDir, "classes-raw.jar")
-        def packCmd = "jar cf \"${rawClassesJar.absolutePath}\" -C \"${sourceSets.main.output.classesDirs.singleFile.absolutePath}\" ."
-        def packProc = packCmd.execute(null, projectDir)
+        def packProc = ['jar', 'cf', rawClassesJar.absolutePath, '-C', sourceSets.main.output.classesDirs.singleFile.absolutePath, '.'].execute(null, projectDir)
         packProc.waitForProcessOutput(System.out, System.err)
 
-        def libParam = (androidJar != null && androidJar.exists()) ? "--lib \"${androidJar.absolutePath}\"" : ""
-        def cmd = "$d8Path --min-api 14 $libParam --output \"${tempDir.absolutePath}\" \"${rawClassesJar.absolutePath}\""
-        def process = cmd.execute(null, projectDir)
+        def d8Args = []
+        if (d8Path.startsWith("java ")) {
+            d8Args.addAll(d8Path.split(" "))
+        } else {
+            d8Args.add(d8Path)
+        }
+        d8Args.add("--min-api")
+        d8Args.add("14")
+        if (androidJar != null && androidJar.exists()) {
+            d8Args.add("--lib")
+            d8Args.add(androidJar.absolutePath)
+        }
+        d8Args.add("--output")
+        d8Args.add(tempDir.absolutePath)
+        d8Args.add(rawClassesJar.absolutePath)
+
+        def process = d8Args.execute(null, projectDir)
         process.waitForProcessOutput(System.out, System.err)
         
         if (process.exitValue() == 0) {
             println "Inyectando DEX en el JAR final..."
-            // Usar el comando 'jar' del JDK para añadir el classes.dex al JAR original
-            def jarCmd = "jar uf ${finalJar.absolutePath} -C ${tempDir.absolutePath} classes.dex"
-            def jarProcess = jarCmd.execute(null, projectDir)
-            jarProcess.waitForProcessOutput(System.out, System.err)
+            def jarProc = ['jar', 'uf', finalJar.absolutePath, '-C', tempDir.absolutePath, 'classes.dex'].execute(null, projectDir)
+            jarProc.waitForProcessOutput(System.out, System.err)
             
             delete tempDir
             println "¡ÉXITO TOTAL! Mod multiplataforma listo en: build/libs/${mArtifact}.jar"
