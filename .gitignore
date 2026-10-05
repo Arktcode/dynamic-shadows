@@ -148,6 +148,7 @@ build/
 ## Mindustry Mod Specific
 d8.jar
 *.jar
+!gradle/wrapper/gradle-wrapper.jar
 !mod.hjson
 !icon.png
 
