@@ -13,7 +13,6 @@ public class ShadowShader extends Shader {
         super(Vars.tree.get("shaders/shadow.vert"), Vars.tree.get("shaders/shadow.frag"));
     }
 
-    //TODO SI VAS A ALTERAR ESTA MONDA ARRUINARAS TODO, mejor no lo toques o te voy a tocar yo a ti.
     @Override
     public void apply() {
         setUniformf("u_radius", radius);

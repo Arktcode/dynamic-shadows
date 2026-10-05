@@ -9,6 +9,7 @@ import arc.graphics.g2d.Fill;
 import arc.graphics.g2d.TextureRegion;
 import arc.graphics.gl.FrameBuffer;
 import arc.math.Mathf;
+import arc.math.geom.Point2;
 import arc.struct.IntSeq;
 import arc.struct.IntSet;
 import arc.struct.ObjectFloatMap;
@@ -21,7 +22,7 @@ import mindustry.world.blocks.environment.Floor;
 
 public class DynamicShadowRenderer {
     public static float BASE_SHADOW_ANGLE = 210f, SHADOW_LENGTH = 10f, SHADOW_ALPHA = 0.38f, weatherMult = 1f;
-    public static boolean enabled = true, dayNightCycle = true, rotateShadows = true;
+    public static boolean enabled = true, dayNightCycle = true, zoomFadeEnabled = true, rotateShadows = true;
     public static float darkFadeThreshold = 0.35f, darkFadeStrength = 0.80f, blurRadius = 3.5f, edgeNoise = 0.38f;
     public static float shadowTint = 0.60f, contactShadow = 0.45f;
     public static float propShadowScale = 1.0f;
@@ -46,13 +47,13 @@ public class DynamicShadowRenderer {
     public static int graphicsQuality = 2;
 
     // FrameBuffers por Tier para el pipeline de sombras en capas Z
-    private static FrameBuffer[] tierFbo = new FrameBuffer[ShadowLayerConfig.NUM_TIERS];
-    private static FrameBuffer[] tierFbo2 = new FrameBuffer[ShadowLayerConfig.NUM_TIERS];
-    private static FrameBuffer[] tierFbo3 = new FrameBuffer[ShadowLayerConfig.NUM_TIERS];
+    private static final FrameBuffer[] tierFbo = new FrameBuffer[ShadowLayerConfig.numTiers];
+    private static final FrameBuffer[] tierFbo2 = new FrameBuffer[ShadowLayerConfig.numTiers];
+    private static final FrameBuffer[] tierFbo3 = new FrameBuffer[ShadowLayerConfig.numTiers];
 
-    private static TextureRegion[] tierReg = new TextureRegion[ShadowLayerConfig.NUM_TIERS];
-    private static TextureRegion[] tierReg2 = new TextureRegion[ShadowLayerConfig.NUM_TIERS];
-    private static TextureRegion[] tierReg3 = new TextureRegion[ShadowLayerConfig.NUM_TIERS];
+    private static final TextureRegion[] tierReg = new TextureRegion[ShadowLayerConfig.numTiers];
+    private static final TextureRegion[] tierReg2 = new TextureRegion[ShadowLayerConfig.numTiers];
+    private static final TextureRegion[] tierReg3 = new TextureRegion[ShadowLayerConfig.numTiers];
 
     // Caché del FBO: se redibuja solo cuando hay cambios
     public static volatile boolean shadDirty = true;
@@ -67,6 +68,57 @@ public class DynamicShadowRenderer {
     public static float currentSunElevation = 0f, currentCycleProgress = 0f;
     private static final ObjectFloatMap<Integer> bridgeWarmupMap = new ObjectFloatMap<>();
     private static final ObjectMap<Integer, float[]> bridgePosMap = new ObjectMap<>();
+    private static final boolean[] tierHasContent = new boolean[ShadowLayerConfig.numTiers];
+
+    public static class BridgeLinkData {
+        public float x1, y1, x2, y2, warmup;
+    }
+    private static final Seq<BridgeLinkData> bridgeLinks = new Seq<>(32);
+    private static final Seq<BridgeLinkData> bridgeLinkPool = new Seq<>(32);
+    private static final IntSet activeBridgeIds = new IntSet();
+    private static final IntSeq toRemoveBridgeIds = new IntSeq();
+
+    private static BridgeLinkData obtainBridgeLink() {
+        if (bridgeLinkPool.size > 0) return bridgeLinkPool.pop();
+        return new BridgeLinkData();
+    }
+
+    private static void freeBridgeLinks() {
+        bridgeLinkPool.addAll(bridgeLinks);
+        bridgeLinks.clear();
+    }
+
+    public static class UnitShadowData {
+        public TextureRegion region;
+        public int tier;
+        public float x, y, w, h, rotation, alpha;
+    }
+    private static final Seq<UnitShadowData> unitShadows = new Seq<>(64);
+    private static final Seq<UnitShadowData> unitShadowPool = new Seq<>(64);
+
+    private static UnitShadowData obtainUnitShadow() {
+        if (unitShadowPool.size > 0) return unitShadowPool.pop();
+        return new UnitShadowData();
+    }
+
+    private static void freeUnitShadows() {
+        unitShadowPool.addAll(unitShadows);
+        unitShadows.clear();
+    }
+
+    public static float getTierZoomFade(int tier, float tilePixels) {
+        if (!zoomFadeEnabled) return 1f;
+        switch (tier) {
+            case ShadowLayerConfig.tierSmall:
+                return Mathf.clamp((tilePixels - 10f) / (18f - 10f), 0f, 1f);
+            case ShadowLayerConfig.tierMed:
+                return Mathf.clamp((tilePixels - 8f) / (14f - 8f), 0f, 1f);
+            case ShadowLayerConfig.tierLarge:
+                return Mathf.clamp((tilePixels - 7f) / (12f - 7f), 0f, 1f);
+            default:
+                return Mathf.clamp((tilePixels - 6.1f) / (11.1f - 6.1f), 0f, 1f);
+        }
+    }
 
     public static void queue() {
         if (!enabled || Vars.headless || !Vars.state.isGame()) return;
@@ -105,13 +157,12 @@ public class DynamicShadowRenderer {
             darkFade = 1f - depth * darkFadeStrength;
         }
 
-        final float shadowLen   = SHADOW_LENGTH * Vars.tilesize * (1f + darkness * 1.2f);
-        final float shadowScale = shadowLen;
+        final float shadowScale = SHADOW_LENGTH * Vars.tilesize * (1f + darkness * 1.2f);
         final float alpha       = SHADOW_ALPHA * Mathf.clamp(weatherMult) * (1f - darkness * 0.5f) * darkFade;
 
         final float camX = Core.camera.position.x, camY = Core.camera.position.y;
         final float camW = Core.camera.width,       camH = Core.camera.height;
-        float margin  = shadowLen + Vars.tilesize * 4f;
+        float margin  = shadowScale + Vars.tilesize * 4f;
         int wMax = Vars.world.width()-1, hMax = Vars.world.height()-1;
         final int tx1 = Mathf.clamp((int)((camX-camW*.5f-margin)/Vars.tilesize),0,wMax);
         final int ty1 = Mathf.clamp((int)((camY-camH*.5f-margin)/Vars.tilesize),0,hMax);
@@ -127,7 +178,7 @@ public class DynamicShadowRenderer {
         final float fboScale = qualityScale();
 
         int gw = Core.graphics.getWidth(), gh = Core.graphics.getHeight();
-        int maxFboDim = 3840;
+        int maxFboDim = Vars.mobile ? 1920 : 3840;
         int fw = Mathf.clamp((int)(gw * fboScale), 1, maxFboDim);
         int fh = Mathf.clamp((int)(gh * fboScale), 1, maxFboDim);
 
@@ -137,7 +188,7 @@ public class DynamicShadowRenderer {
             disposeFBOs();
             lastFboScale = fboScale;
             try {
-                for (int t = 0; t < ShadowLayerConfig.NUM_TIERS; t++) {
+                for (int t = 0; t < ShadowLayerConfig.numTiers; t++) {
                     tierFbo[t]  = new FrameBuffer(fw, fh); tierReg[t]  = flipped(tierFbo[t]);
                     tierFbo2[t] = new FrameBuffer(fw, fh); tierReg2[t] = flipped(tierFbo2[t]);
                     tierFbo3[t] = new FrameBuffer(fw, fh); tierReg3[t] = flipped(tierFbo3[t]);
@@ -160,15 +211,18 @@ public class DynamicShadowRenderer {
 
         final float ts = Vars.tilesize;
 
-        // Recolectar enlaces de puentes visibles con animación de entrada/salida
-        final java.util.ArrayList<float[]> bridgeLinks = new java.util.ArrayList<>();
-        final IntSet activeBridgeIds = new IntSet();
+        // Limpiar pools de la iteración previa
+        freeUnitShadows();
+        freeBridgeLinks();
+
+        // Recolectar enlaces de puentes visibles
+        activeBridgeIds.clear();
+        final boolean[] anyBridgeAnimating = {false};
 
         mindustry.gen.Groups.build.each(b -> {
             if (b.x < screenX1 || b.x > screenX2 || b.y < screenY1 || b.y > screenY2) return;
             if (!(b instanceof mindustry.world.blocks.distribution.ItemBridge.ItemBridgeBuild)) return;
-            mindustry.world.blocks.distribution.ItemBridge.ItemBridgeBuild bridge =
-                    (mindustry.world.blocks.distribution.ItemBridge.ItemBridgeBuild) b;
+            mindustry.world.blocks.distribution.ItemBridge.ItemBridgeBuild bridge = (mindustry.world.blocks.distribution.ItemBridge.ItemBridgeBuild) b;
             int linkPos = bridge.link;
             if (linkPos != -1) {
                 int lx = arc.math.geom.Point2.x(linkPos);
@@ -177,43 +231,59 @@ public class DynamicShadowRenderer {
                 if (tgt != null && tgt.build != null && Mathf.dst(b.x, b.y, tgt.build.x, tgt.build.y) <= 12f * Vars.tilesize) {
                     activeBridgeIds.add(b.id);
                     float curWarmup = bridgeWarmupMap.get(b.id, 0f);
-                    curWarmup = Mathf.approachDelta(curWarmup, 1f, 0.08f);
-                    bridgeWarmupMap.put(b.id, curWarmup);
-                    bridgePosMap.put(b.id, new float[]{b.x, b.y, tgt.build.x, tgt.build.y});
+                    float newWarmup = Mathf.approachDelta(curWarmup, 1f, 0.08f);
+                    if (Math.abs(newWarmup - curWarmup) > 0.001f) {
+                        anyBridgeAnimating[0] = true;
+                    }
+                    bridgeWarmupMap.put(b.id, newWarmup);
+                    float[] pos = bridgePosMap.get(b.id);
+                    if (pos == null) {
+                        pos = new float[4];
+                        bridgePosMap.put(b.id, pos);
+                        anyBridgeAnimating[0] = true;
+                    }
+                    pos[0] = b.x; pos[1] = b.y; pos[2] = tgt.build.x; pos[3] = tgt.build.y;
 
-                    float animTx = Mathf.lerp(b.x, tgt.build.x, curWarmup);
-                    float animTy = Mathf.lerp(b.y, tgt.build.y, curWarmup);
-                    bridgeLinks.add(new float[]{b.x, b.y, animTx, animTy, curWarmup});
+                    float animTx = Mathf.lerp(b.x, tgt.build.x, newWarmup);
+                    float animTy = Mathf.lerp(b.y, tgt.build.y, newWarmup);
+                    BridgeLinkData link = obtainBridgeLink();
+                    link.x1 = b.x; link.y1 = b.y; link.x2 = animTx; link.y2 = animTy; link.warmup = newWarmup;
+                    bridgeLinks.add(link);
                 }
             }
         });
 
         // Animar puentes que perdieron su enlace (animación de salida)
-        IntSeq toRemove = new IntSeq();
+        toRemoveBridgeIds.clear();
         for (ObjectMap.Entry<Integer, float[]> entry : bridgePosMap) {
             int bid = entry.key;
             if (!activeBridgeIds.contains(bid)) {
                 float curWarmup = bridgeWarmupMap.get(bid, 0f);
-                curWarmup = Mathf.approachDelta(curWarmup, 0f, 0.08f);
+                float newWarmup = Mathf.approachDelta(curWarmup, 0f, 0.08f);
+                if (Math.abs(newWarmup - curWarmup) > 0.001f) {
+                    anyBridgeAnimating[0] = true;
+                }
                 float[] pos = entry.value;
-                if (curWarmup > 0.001f && pos != null && Mathf.dst(pos[0], pos[1], pos[2], pos[3]) <= 12f * Vars.tilesize) {
-                    bridgeWarmupMap.put(bid, curWarmup);
-                    float animTx = Mathf.lerp(pos[0], pos[2], curWarmup);
-                    float animTy = Mathf.lerp(pos[1], pos[3], curWarmup);
-                    bridgeLinks.add(new float[]{pos[0], pos[1], animTx, animTy, curWarmup});
+                if (newWarmup > 0.001f && pos != null && Mathf.dst(pos[0], pos[1], pos[2], pos[3]) <= 12f * Vars.tilesize) {
+                    bridgeWarmupMap.put(bid, newWarmup);
+                    float animTx = Mathf.lerp(pos[0], pos[2], newWarmup);
+                    float animTy = Mathf.lerp(pos[1], pos[3], newWarmup);
+                    BridgeLinkData link = obtainBridgeLink();
+                    link.x1 = pos[0]; link.y1 = pos[1]; link.x2 = animTx; link.y2 = animTy; link.warmup = newWarmup;
+                    bridgeLinks.add(link);
                 } else {
-                    toRemove.add(bid);
+                    toRemoveBridgeIds.add(bid);
+                    anyBridgeAnimating[0] = true;
                 }
             }
         }
-        for (int i = 0; i < toRemove.size; i++) {
-            int bid = toRemove.get(i);
+        for (int i = 0; i < toRemoveBridgeIds.size; i++) {
+            int bid = toRemoveBridgeIds.get(i);
             bridgeWarmupMap.remove(bid, 0f);
             bridgePosMap.remove(bid);
         }
 
-        // Recolectar datos de sombras de unidades fuera del lambda para evitar NPE en el QuadTree
-        final java.util.ArrayList<UnitShadowData> unitShadows = new java.util.ArrayList<>();
+        // Recolectar datos de sombras de unidades fuera del lambda reutilizando el pool
         if (unitShadowsEnabled) {
             mindustry.gen.Groups.unit.each(u -> {
                 if (u.x < screenX1 || u.x > screenX2 || u.y < screenY1 || u.y > screenY2) return;
@@ -225,7 +295,7 @@ public class DynamicShadowRenderer {
                 float uh = usRegion.height * Draw.scl;
                 float sizeMult = 1f + u.elevation * 0.22f;
                 float alphaMult = Mathf.clamp(1f - u.elevation * 0.50f, 0.25f, 1f);
-                UnitShadowData d = new UnitShadowData();
+                UnitShadowData d = obtainUnitShadow();
                 d.region = usRegion;
                 d.tier = uTier;
                 d.x = u.x + cosA * ufl;
@@ -238,13 +308,17 @@ public class DynamicShadowRenderer {
             });
         }
 
-        // Redibujar el FBO si la cámara se movió, el mapa cambió o hay puentes activos
+        final float currentPpu = (float) Core.graphics.getWidth() / Core.camera.width;
+        float camMoveThreshold = Vars.mobile ? Math.max(0.20f, camW * 0.003f) : Math.max(0.08f, camW * 0.0015f);
+        float camZoomThreshold = Vars.mobile ? Math.max(0.30f, camW * 0.004f) : Math.max(0.15f, camW * 0.0025f);
+
+        // Redibujar el FBO si la cámara se movió, el mapa cambió o hay puentes en animación
         final boolean needsRedraw = shadDirty
-            || !bridgeLinks.isEmpty()
+            || anyBridgeAnimating[0]
             || Math.abs(angle - lastCachedAngle) > 0.5f
-            || Math.abs(camX - lastCachedCamX) > 0.05f
-            || Math.abs(camY - lastCachedCamY) > 0.05f
-            || Math.abs(camW - lastCachedCamW) > 0.05f;
+            || Math.abs(camX - lastCachedCamX) > camMoveThreshold
+            || Math.abs(camY - lastCachedCamY) > camMoveThreshold
+            || Math.abs(camW - lastCachedCamW) > camZoomThreshold;
 
         if (needsRedraw) {
             shadDirty = false;
@@ -254,13 +328,48 @@ public class DynamicShadowRenderer {
             lastCachedCamW = camW;
         }
 
+        final float rawTilePixels = (Vars.tilesize / Core.camera.width) * Core.graphics.getWidth();
+        float minTilePixels = 6.0f;
+        if (Vars.renderer != null && Vars.renderer.minScale() > 0.001f) {
+            minTilePixels = Vars.tilesize * Vars.renderer.minScale();
+        }
+        final float tilePixels = minTilePixels > 0.001f ? (rawTilePixels / minTilePixels) * 6.0f : rawTilePixels;
+
         // Pipeline de sombras en 5 Tiers
-        for (int t = 0; t < ShadowLayerConfig.NUM_TIERS; t++) {
+        for (int t = 0; t < ShadowLayerConfig.numTiers; t++) {
             final int tier = t;
             final float drawZ = Layers.getZ(tier);
 
             Draw.draw(drawZ, () -> {
+                float tierFade = getTierZoomFade(tier, tilePixels);
+
                 if (needsRedraw) {
+                    if (tierFade <= 0.005f) {
+                        tierHasContent[tier] = false;
+                        return; // Omitir FBO y shaders por completo si este Tier está desvanecido al alejar la cámara
+                    }
+
+                    // Descarte de Tiers Vacíos (Empty Tier Skipping):
+                    boolean hasCasters = false;
+                    for (int cx = chX1; cx <= chX2 && !hasCasters; cx++) {
+                        for (int cy = chY1; cy <= chY2; cy++) {
+                            if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                            ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                            if (chunk == null || !chunk.valid || chunk.tierCasters[tier].size > 0) {
+                                hasCasters = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (tier == ShadowLayerConfig.tierXL && !bridgeLinks.isEmpty()) {
+                        hasCasters = true;
+                    }
+
+                    tierHasContent[tier] = hasCasters;
+                    if (!hasCasters) {
+                        return; // Omitir FBO, shaders y limpiezas de este Tier vacío
+                    }
+
                     tierFbo[tier].begin();
                 Gl.clearColor(0f, 0f, 0f, 0f);
                 Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
@@ -297,10 +406,9 @@ public class DynamicShadowRenderer {
                                 float propLen = propH * (shadowScale / 80f) * 1.35f * propShadowScale;
                                 if (propLen < 0.4f) continue;
                                 float propContactAlpha = contactShadow * 0.55f * fDarkFade;
-                                Draw.color(0.04f, 0.03f, 0.08f, 1f);
                                 AnyBlocksShadows.drawPropShadow(
                                         e.cx, e.cy, e.region, e.propType, propLen,
-                                        cosA, sinA, angle, propContactAlpha);
+                                        cosA, sinA, angle, propContactAlpha, 1f);
                             } else {
                                 float fLen = shadowScale * e.elev * e.mod;
                                 if (fLen < 0.2f) continue;
@@ -309,19 +417,20 @@ public class DynamicShadowRenderer {
                                     Draw.color(0.02f, 0.015f, 0.04f, contactShadow * 0.70f);
                                     float rectSize = e.rawSize;
                                     Fill.rect(e.cx, e.cy, rectSize, rectSize);
-                                    Draw.color(0.04f, 0.03f, 0.08f, 1f);
                                 }
-                                AnyBlocksShadows.draw(e.cx, e.cy, e.size, fLen, cosA, sinA, e.region, e.rawSize);
+                                Draw.color(0.04f, 0.03f, 0.08f, 1f);
+                                AnyBlocksShadows.draw(e.cx, e.cy, fLen, cosA, sinA, e.region, e.rawSize);
                             }
                         }
                     }
                 }
 
                 // Sombras de enlaces de puente en Tier XL (sobre bloques 1x1 a 5x5)
-                if (tier == ShadowLayerConfig.TIER_XL && !bridgeLinks.isEmpty()) {
+                if (tier == ShadowLayerConfig.tierXL && !bridgeLinks.isEmpty()) {
                     float bridgeFLen = shadowScale * 0.025f;
-                    for (float[] lk : bridgeLinks) {
-                        drawBridgeLinkShadow(lk[0], lk[1], lk[2], lk[3], bridgeFLen, cosA, sinA, lk[4]);
+                    for (int i = 0; i < bridgeLinks.size; i++) {
+                        BridgeLinkData lk = bridgeLinks.get(i);
+                        drawBridgeLinkShadow(lk.x1, lk.y1, lk.x2, lk.y2, bridgeFLen, cosA, sinA, lk.warmup);
                     }
                 }
 
@@ -331,13 +440,13 @@ public class DynamicShadowRenderer {
                 Draw.color(0f, 0f, 0f, 0f);
                 eraseTierFootprints(chX1, chY1, chX2, chY2, tier, screenX1, screenY1, screenX2, screenY2);
 
-                // Borrar paredes rocosas en Tier ENV para evitar autosombra de montañas
-                if (tier == ShadowLayerConfig.TIER_ENV) {
-                    eraseWallTiles(chX1, chY1, chX2, chY2);
+                // Borrar paredes rocosas en todos los tiers que dibujan sobre Z=30f para evitar sombras sobre montañas
+                if (tier >= ShadowLayerConfig.tierLarge) {
+                    eraseWallTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
                 }
 
-                // Borrar casillas de suelo luminoso, líquido o espacio
-                eraseFloorTiles(tx1, ty1, tx2, ty2, ts);
+                // Borra casillas de suelo luminoso, líquido o espacio Ñ
+                eraseFloorTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
 
                 Draw.flush();
                 Draw.blend(arc.graphics.Blending.normal);
@@ -362,8 +471,8 @@ public class DynamicShadowRenderer {
                 Draw.blend(arc.graphics.Blending.disabled);
                 Draw.color(0f, 0f, 0f, 0f);
                 eraseTierFootprints(chX1, chY1, chX2, chY2, tier, screenX1, screenY1, screenX2, screenY2);
-                if (tier == ShadowLayerConfig.TIER_ENV) {
-                    eraseWallTiles(chX1, chY1, chX2, chY2);
+                if (tier >= ShadowLayerConfig.tierLarge) {
+                    eraseWallTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
                 }
                 Draw.flush();
                 Draw.blend(arc.graphics.Blending.normal);
@@ -371,24 +480,46 @@ public class DynamicShadowRenderer {
                 tierFbo3[tier].end();
                 }
 
-                // Dibujar la textura final desenfocada en la posición de la cámara
-                if (enabled && tierReg3[tier] != null && tierReg3[tier].texture != null) {
-                    Draw.color(Color.white, alpha);
+                // Dibujar la textura final desenfocada en la posición de la cámara (solo si el Tier tiene contenido y está visible)
+                if (enabled && tierHasContent[tier] && tierFade > 0.005f && tierReg3[tier] != null && tierReg3[tier].texture != null) {
+                    Draw.color(Color.white, alpha * tierFade);
                     Draw.rect(tierReg3[tier], camX, camY, camW, camH);
                     Draw.color();
                 }
 
                 // Dibujar sombras de unidades encima del FBO
-                if (!unitShadows.isEmpty()) {
-                    for (UnitShadowData ud : unitShadows) {
+                if (!unitShadows.isEmpty() && tierFade > 0.005f) {
+                    for (int i = 0; i < unitShadows.size; i++) {
+                        UnitShadowData ud = unitShadows.get(i);
                         if (ud.tier != tier) continue;
-                        Draw.color(0.04f, 0.03f, 0.08f, ud.alpha * alpha);
+                        Draw.color(0.04f, 0.03f, 0.08f, ud.alpha * alpha * tierFade);
                         Draw.rect(ud.region, ud.x, ud.y, ud.w, ud.h, ud.rotation - 90);
                     }
                     Draw.color();
                 }
             });
         }
+
+        // Dibujar árboles (StaticTree como sporePine) a Z=71.0f para asegurar que queden por encima de todas las sombras
+        Draw.draw(Layers.treeLayer, () -> {
+            for (int cx = chX1; cx <= chX2; cx++) {
+                for (int cy = chY1; cy <= chY2; cy++) {
+                    if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                    ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                    if (chunk == null || !chunk.valid || chunk.treeTiles.isEmpty()) continue;
+                    IntSeq list = chunk.treeTiles;
+                    for (int i = 0; i < list.size; i++) {
+                        int pos = list.get(i);
+                        int tx = Point2.x(pos);
+                        int ty = Point2.y(pos);
+                        Tile t = Vars.world.tile(tx, ty);
+                        if (t != null && t.block() != null && t.block() instanceof mindustry.world.blocks.environment.StaticTree) {
+                            t.block().drawBase(t);
+                        }
+                    }
+                }
+            }
+        });
 
     }
 
@@ -398,7 +529,7 @@ public class DynamicShadowRenderer {
                 if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
                 ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
                 if (!chunk.valid) continue;
-                for (int t = (tier == ShadowLayerConfig.TIER_XL ? 0 : tier); t < ShadowLayerConfig.NUM_TIERS; t++) {
+                for (int t = (tier == ShadowLayerConfig.tierXL ? 0 : tier); t < ShadowLayerConfig.numTiers; t++) {
                     Seq<ChunkCache.CasterEntry> list = chunk.tierCasters[t];
                     for (int i = 0; i < list.size; i++) {
                         ChunkCache.CasterEntry e = list.get(i);
@@ -440,43 +571,56 @@ public class DynamicShadowRenderer {
         );
     }
 
-    private static void eraseWallTiles(int chX1, int chY1, int chX2, int chY2) {
+    private static void eraseWallTiles(int chX1, int chY1, int chX2, int chY2, float sX1, float sY1, float sX2, float sY2) {
+        float ts = Vars.tilesize;
         for (int cx = chX1; cx <= chX2; cx++) {
             for (int cy = chY1; cy <= chY2; cy++) {
                 if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
                 ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
-                if (!chunk.valid) continue;
-                Seq<ChunkCache.CasterEntry> list = chunk.tierCasters[ShadowLayerConfig.TIER_ENV];
+                if (chunk == null || !chunk.valid || chunk.mountainTiles.isEmpty()) continue;
+                IntSeq list = chunk.mountainTiles;
                 for (int i = 0; i < list.size; i++) {
-                    ChunkCache.CasterEntry e = list.get(i);
-                    if (e.mod == 0f || e.isProp) continue;
-                    Fill.rect(e.cx, e.cy, e.rawSize, e.rawSize);
+                    int pos = list.get(i);
+                    float tx = Point2.x(pos) * ts;
+                    float ty = Point2.y(pos) * ts;
+                    if (tx + ts < sX1 || tx - ts > sX2 || ty + ts < sY1 || ty - ts > sY2) continue;
+                    Fill.rect(tx, ty, ts, ts);
                 }
             }
         }
     }
 
-    private static void eraseFloorTiles(int tx1, int ty1, int tx2, int ty2, float ts) {
-        for (int ex = tx1; ex <= tx2; ex++) {
-            for (int ey = ty1; ey <= ty2; ey++) {
-                if (shouldEraseShadow(Vars.world.tile(ex, ey))) {
-                    Fill.rect(ex * ts, ey * ts, ts + 0.1f, ts + 0.1f);
+    private static void eraseFloorTiles(int chX1, int chY1, int chX2, int chY2, float sX1, float sY1, float sX2, float sY2) {
+        for (int cx = chX1; cx <= chX2; cx++) {
+            for (int cy = chY1; cy <= chY2; cy++) {
+                if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
+                ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
+                if (chunk == null || !chunk.valid || chunk.eraseFloorTiles.isEmpty()) continue;
+                IntSeq list = chunk.eraseFloorTiles;
+                for (int i = 0; i < list.size; i++) {
+                    int p = list.get(i);
+                    int x = Point2.x(p);
+                    int y = Point2.y(p);
+                    float wx = x * (float) 8.0;
+                    float wy = y * (float) 8.0;
+                    if (wx + (float) 8.0 < sX1 || wx - (float) 8.0 > sX2 || wy + (float) 8.0 < sY1 || wy - (float) 8.0 > sY2) continue;
+                    Fill.rect(wx, wy, (float) 8.0 + 0.1f, (float) 8.0 + 0.1f);
                 }
             }
         }
     }
 
     private static float qualityScale() {
-        switch (graphicsQuality) {
-            case 0:  return 0.50f;
-            case 1:  return 0.75f;
-            default: return 1.00f;
-        }
+        if (graphicsQuality == 0) return 0.50f;
+        if (graphicsQuality == 1) return 0.75f;
+        return 1.00f;
     }
 
     private static void applyShaderPass(float dx, float dy, float sunElev, TextureRegion src, float cx, float cy, float cw, float ch) {
         if (shadowShader == null) shadowShader = new ShadowShader();
-        float currentPpu = (float)Core.graphics.getWidth() / Core.camera.width;
+        float scl = arc.scene.ui.layout.Scl.scl();
+        if (scl <= 0.001f) scl = 1f;
+        float currentPpu = ((float)Core.graphics.getWidth() / Core.camera.width) / scl;
         float ppuScale = Math.min(1.0f, currentPpu / 4.0f);
         shadowShader.radius = Mathf.clamp(blurRadius * ppuScale, 0.5f, blurRadius);
         shadowShader.blurDirX = dx;
@@ -503,7 +647,8 @@ public class DynamicShadowRenderer {
     }
 
     private static void disposeFBOs() {
-        for (int t = 0; t < ShadowLayerConfig.NUM_TIERS; t++) {
+        for (int t = 0; t < ShadowLayerConfig.numTiers; t++) {
+            tierHasContent[t] = false;
             for (FrameBuffer b : new FrameBuffer[]{tierFbo[t], tierFbo2[t], tierFbo3[t]}) {
                 if (b != null) try { b.dispose(); } catch (Exception ignored) {}
             }
@@ -512,54 +657,28 @@ public class DynamicShadowRenderer {
     }
 
     private static boolean isSolidAt(int x, int y) {
+        if (Vars.world == null) return false;
+        if (x < 0 || y < 0 || x >= Vars.world.width() || y >= Vars.world.height()) return true;
         Tile t = Vars.world.tile(x, y);
-        if (t == null) return false;
+        if (t == null) return true;
         if (t.build != null) return t.build.block.solid;
         return t.block().solid;
     }
 
     private static boolean isBuriedTile(int x, int y) {
-        return isSolidAt(x+1, y) && isSolidAt(x-1, y) && isSolidAt(x, y+1) && isSolidAt(x, y-1);
-    }
-
-    private static boolean isMountainTile(int x, int y) {
-        Tile t = Vars.world.tile(x, y);
-        if (t == null || t.build != null) return false;
-        return t.block().solid && ShadowLayerConfig.isMountainOrWall(t.block());
+        return isSolidAt(x + 1, y) && isSolidAt(x - 1, y) && isSolidAt(x, y + 1) && isSolidAt(x, y - 1);
     }
 
     private static boolean isBuriedMountain(int x, int y) {
-        return isMountainTile(x+1, y)   && isMountainTile(x-1, y)   && isMountainTile(x, y+1)   && isMountainTile(x, y-1)
-            && isMountainTile(x+1, y+1) && isMountainTile(x-1, y+1) && isMountainTile(x+1, y-1) && isMountainTile(x-1, y-1);
+        return isSolidAt(x + 1, y) && isSolidAt(x - 1, y) && isSolidAt(x, y + 1) && isSolidAt(x, y - 1);
     }
 
     // Devuelve true si la montaña tiene al menos una cara expuesta en la dirección de la sombra
     private static boolean isExposedMountainCaster(int x, int y, float cosA, float sinA) {
-        int dx = Math.round(cosA);
-        int dy = Math.round(sinA);
-        if (!isMountainTile(x + dx, y + dy)) return true;
-        if (isMountainTile(x + dx * 2, y + dy * 2)) return false;
-        return true;
-    }
-
-    private static boolean isBuildingBuried(mindustry.gen.Building build) {
-        if (build == null || build.block == null) return false;
-        int sz = build.block.size;
-        int tx = build.tileX();
-        int ty = build.tileY();
-        int offset = (sz - 1) / 2;
-        int minX = tx - offset;
-        int maxX = minX + sz - 1;
-        int minY = ty - offset;
-        int maxY = minY + sz - 1;
-
-        for (int x = minX; x <= maxX; x++) {
-            if (!isSolidAt(x, maxY + 1) || !isSolidAt(x, minY - 1)) return false;
-        }
-        for (int y = minY; y <= maxY; y++) {
-            if (!isSolidAt(maxX + 1, y) || !isSolidAt(minX - 1, y)) return false;
-        }
-        return true;
+        if (cosA > 0.01f && !isSolidAt(x + 1, y)) return true;
+        if (cosA < -0.01f && !isSolidAt(x - 1, y)) return true;
+        if (sinA > 0.01f && !isSolidAt(x, y + 1)) return true;
+        return sinA < -0.01f && !isSolidAt(x, y - 1);
     }
 
     private static float getElev(Block b, float def) {
@@ -597,7 +716,7 @@ public class DynamicShadowRenderer {
 
         String n = fl.name != null ? fl.name.toLowerCase() : "";
 
-        // metal-floor-6, metal-floor-12 y runa crux no reciben sombras
+        // metal-floor-6, metal-floor-12 y runa crux no reciben sombras, ya que obviamente quedaria raro
         boolean isMetal6  = n.contains("metal-floor-6")  || n.contains("metal-tile-6")  || n.contains("metal6")  || (n.endsWith("-6")  && n.contains("metal"));
         boolean isMetal12 = n.contains("metal-floor-12") || n.contains("metal-tile-12") || n.contains("metal12") || (n.endsWith("-12") && n.contains("metal"));
         boolean isCruxRune = n.contains("crux") || n.contains("rune");
@@ -614,13 +733,8 @@ public class DynamicShadowRenderer {
         return res;
     }
 
-    private static class UnitShadowData {
-        TextureRegion region;
-        int tier;
-        float x, y, w, h, rotation, alpha;
-    }
 
-    // Caché de proyectores estáticos organizado en chunks de 16x16 y 5 Tiers
+    // Caché de proyectores estáticos organizado en chunks de 16x16 y 5 Tiers (un ligero intento de rendimiento)
     public static class ChunkCache {
         public static final int CHUNK_SIZE = 16;
         public static volatile CasterChunk[][] chunks;
@@ -631,11 +745,14 @@ public class DynamicShadowRenderer {
         private static final java.util.concurrent.ConcurrentHashMap<Long, Boolean> pendingChunks = new java.util.concurrent.ConcurrentHashMap<>();
 
         public static class CasterChunk {
-            public final Seq<CasterEntry>[] tierCasters = new Seq[ShadowLayerConfig.NUM_TIERS];
+            public final Seq<CasterEntry>[] tierCasters = new Seq[ShadowLayerConfig.numTiers];
+            public final IntSeq eraseFloorTiles = new IntSeq();
+            public final IntSeq mountainTiles = new IntSeq();
+            public final IntSeq treeTiles = new IntSeq();
             public boolean valid = false;
 
             public CasterChunk() {
-                for (int i = 0; i < ShadowLayerConfig.NUM_TIERS; i++) {
+                for (int i = 0; i < ShadowLayerConfig.numTiers; i++) {
                     tierCasters[i] = new Seq<>(false, 4);
                 }
             }
@@ -661,7 +778,7 @@ public class DynamicShadowRenderer {
             if (threadPool != null && !threadPool.isShutdown()) {
                 threadPool.shutdownNow();
             }
-            int threads = Math.max(2, Math.min(Runtime.getRuntime().availableProcessors(), 8));
+            int threads = Mathf.clamp(Runtime.getRuntime().availableProcessors(), 2, 8);
             threadPool = java.util.concurrent.Executors.newFixedThreadPool(threads);
             pendingChunks.clear();
 
@@ -732,15 +849,33 @@ public class DynamicShadowRenderer {
                     Tile tile = Vars.world.tile(x, y);
                     if (tile == null) continue;
 
+                    if (shouldEraseShadow(tile)) {
+                        newChunk.eraseFloorTiles.add(Point2.pack(x, y));
+                    }
+
                     Floor fl = tile.floor();
                     if (isLuminousFloor(fl)) continue;
 
                     boolean isBuild = tile.build != null && tile.isCenter();
-                    boolean isProp  = !oldShadowsEnabled && !isBuild
+                    boolean isPine  = !isBuild && AnyBlocksShadows.isPine(tile.block());
+                    boolean isTree  = !isBuild && ShadowLayerConfig.isTree(tile.block());
+                    boolean isCrystal = !isBuild && ShadowLayerConfig.isCrystal(tile.block());
+
+                    boolean isMtnBlock = !isBuild && tile.block().solid && (ShadowLayerConfig.isMountainOrWall(tile.block()) || isPine);
+                    if (isMtnBlock) {
+                        newChunk.mountainTiles.add(Point2.pack(x, y));
+                    }
+                    if (isTree) {
+                        newChunk.treeTiles.add(Point2.pack(x, y));
+                    }
+
+                    boolean isProp  = !oldShadowsEnabled && !isBuild && !isPine && !isMtnBlock
                                       && (tile.block() instanceof mindustry.world.blocks.environment.Prop
-                                          || tile.block() instanceof mindustry.world.blocks.environment.TreeBlock)
+                                          || tile.block() instanceof mindustry.world.blocks.environment.TreeBlock
+                                          || tile.block() instanceof mindustry.world.blocks.environment.TallBlock
+                                          || isCrystal || isTree)
                                       && !(tile.block() instanceof mindustry.world.blocks.environment.StaticWall);
-                    boolean isMtn   = !isBuild && !isProp && tile.block().solid && ShadowLayerConfig.isMountainOrWall(tile.block());
+                    boolean isMtn   = !isBuild && !isProp && tile.block().solid && isMtnBlock;
                     boolean isWall  = !isBuild && !isProp && tile.block().solid
                                       && (isMtn ? !isBuriedMountain(x, y) : !isBuriedTile(x, y));
                     if (!isBuild && !isWall && !isProp) continue;

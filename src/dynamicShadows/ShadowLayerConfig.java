@@ -15,17 +15,16 @@ import mindustry.world.blocks.environment.Prop;
 import mindustry.world.blocks.environment.StaticWall;
 import mindustry.world.blocks.environment.TreeBlock;
 import mindustry.world.blocks.payloads.PayloadConveyor;
-import mindustry.world.blocks.payloads.PayloadRouter;
 import mindustry.world.blocks.power.PowerNode;
 
 /** Clasificación de capas Z y asignación de Tiers para las sombras dinámicas. */
 public final class ShadowLayerConfig {
 
-    public static final int NUM_TIERS  = 5;
-    public static final int TIER_SMALL = 0; // 1x1: transportes, rocas pequeñas
-    public static final int TIER_MED   = 1; // 2x2: vegetación mediana
-    public static final int TIER_LARGE = 2; // 3x3
-    public static final int TIER_XL    = 3; // 4x4 y 5x5
+    public static final int numTiers  = 5;
+    public static final int tierSmall = 0; // 1x1: transportes, rocas pequeñas
+    public static final int tierMed   = 1; // 2x2: vegetación mediana
+    public static final int tierLarge = 2; // 3x3
+    public static final int tierXL    = 3; // 4x4 y 5x5
     public static final int TIER_ENV   = 4; // Montañas y paredes naturales
 
     private static final ObjectIntMap<String> tierOverrides = new ObjectIntMap<>();
@@ -35,83 +34,82 @@ public final class ShadowLayerConfig {
 
     static {
         // Sobrescrituras de Tier para bloques cuya clase o tamaño no se clasifican automáticamente
-        tierOverrides.put("mass-driver",               TIER_LARGE);
-        tierOverrides.put("payload-mass-driver",       TIER_LARGE);
-        tierOverrides.put("large-payload-mass-driver", TIER_XL);
-        tierOverrides.put("impetus",                   TIER_LARGE);
+        tierOverrides.put("mass-driver",               tierLarge);
+        tierOverrides.put("payload-mass-driver",       tierLarge);
+        tierOverrides.put("large-payload-mass-driver", tierXL);
+        tierOverrides.put("impetus",                   tierLarge);
 
-        tierOverrides.put("logic-display",             TIER_SMALL);
-        tierOverrides.put("large-logic-display",       TIER_SMALL);
-        tierOverrides.put("memory-cell",               TIER_SMALL);
-        tierOverrides.put("memory-bank",               TIER_SMALL);
+        tierOverrides.put("logic-display",             tierSmall);
+        tierOverrides.put("large-logic-display",       tierSmall);
+        tierOverrides.put("memory-cell",               tierSmall);
+        tierOverrides.put("memory-bank",               tierSmall);
 
         // Núcleos
-        tierOverrides.put("core-shard",                TIER_LARGE);
-        tierOverrides.put("core-foundation",           TIER_XL);
-        tierOverrides.put("core-nucleus",              TIER_XL);
-        tierOverrides.put("core-bastion",              TIER_LARGE);
-        tierOverrides.put("core-citadel",              TIER_XL);
-        tierOverrides.put("core-acropolis",            TIER_XL);
+        tierOverrides.put("core-shard",                tierLarge);
+        tierOverrides.put("core-foundation",           tierXL);
+        tierOverrides.put("core-nucleus",              tierXL);
+        tierOverrides.put("core-bastion",              tierLarge);
+        tierOverrides.put("core-citadel",              tierXL);
+        tierOverrides.put("core-acropolis",            tierXL);
 
         // Almacenamiento y líquidos
-        tierOverrides.put("container",                 TIER_MED);
-        tierOverrides.put("vault",                     TIER_LARGE);
-        tierOverrides.put("unloader",                  TIER_SMALL);
-        tierOverrides.put("liquid-container",            TIER_MED);
-        tierOverrides.put("liquid-tank",                 TIER_LARGE);
-        tierOverrides.put("reinforced-container",        TIER_MED);
-        tierOverrides.put("reinforced-vault",            TIER_LARGE);
-        tierOverrides.put("reinforced-liquid-container", TIER_MED);
-        tierOverrides.put("reinforced-liquid-tank",      TIER_LARGE);
-        tierOverrides.put("reinforced-pump",             TIER_MED);
+        tierOverrides.put("container",                 tierMed);
+        tierOverrides.put("vault",                     tierLarge);
+        tierOverrides.put("unloader",                  tierSmall);
+        tierOverrides.put("liquid-container",            tierMed);
+        tierOverrides.put("liquid-tank",                 tierLarge);
+        tierOverrides.put("reinforced-container",        tierMed);
+        tierOverrides.put("reinforced-vault",            tierLarge);
+        tierOverrides.put("reinforced-liquid-container", tierMed);
+        tierOverrides.put("reinforced-liquid-tank",      tierLarge);
+        tierOverrides.put("reinforced-pump",             tierMed);
 
         // Proyectores y reparadores
-        tierOverrides.put("overdrive-projector",       TIER_MED);
-        tierOverrides.put("overdrive-dome",            TIER_LARGE);
-        tierOverrides.put("force-projector",           TIER_LARGE);
-        tierOverrides.put("large-force-projector",     TIER_XL);
-        tierOverrides.put("mender",                    TIER_SMALL);
-        tierOverrides.put("mend-projector",            TIER_MED);
-        tierOverrides.put("repair-tower",              TIER_MED);
-        tierOverrides.put("repair-turret",             TIER_MED);
+        tierOverrides.put("overdrive-projector",       tierMed);
+        tierOverrides.put("overdrive-dome",            tierLarge);
+        tierOverrides.put("force-projector",           tierLarge);
+        tierOverrides.put("large-force-projector",     tierXL);
+        tierOverrides.put("mender",                    tierSmall);
+        tierOverrides.put("mend-projector",            tierMed);
+        tierOverrides.put("repair-tower",              tierMed);
+        tierOverrides.put("repair-turret",             tierMed);
 
         // Lanzamiento y aterrizaje
-        tierOverrides.put("launch-pad",                TIER_LARGE);
-        tierOverrides.put("landing-pad",               TIER_LARGE);
-        tierOverrides.put("interplanetary-accelerator",TIER_XL);
+        tierOverrides.put("launch-pad",                tierLarge);
+        tierOverrides.put("landing-pad",               tierLarge);
+        tierOverrides.put("interplanetary-accelerator",tierXL);
 
-        // Reconstructores (los >= 6x6 van a TIER_ENV para quedar sobre nodos de energía)
-        tierOverrides.put("additive-reconstructor",       TIER_LARGE);
-        tierOverrides.put("multiplicative-reconstructor", TIER_XL);
-        tierOverrides.put("exponential-reconstructor",    TIER_ENV);
-        tierOverrides.put("tetrative-reconstructor",      TIER_ENV);
+        // Reconstructores
+        tierOverrides.put("additive-reconstructor",       tierLarge);
+        tierOverrides.put("multiplicative-reconstructor", tierXL);
+        tierOverrides.put("exponential-reconstructor",    tierXL);
+        tierOverrides.put("tetrative-reconstructor",      tierXL);
     }
 
     public static int getTier(Block b) {
-        if (b == null) return TIER_SMALL;
-        if (isBridge(b) || isPowerNode(b) || isDistributionBlock(b) || isLogicOrMemory(b)) return TIER_SMALL;
+        if (b == null) return tierSmall;
+        if (isBridge(b) || isPowerNode(b) || isDistributionBlock(b) || isLogicOrMemory(b)) return tierSmall;
 
         String key = b.name != null ? b.name.toLowerCase() : "";
         if (tierOverrides.containsKey(key)) {
-            return Mathf.clamp(tierOverrides.get(key, TIER_SMALL), 0, NUM_TIERS - 1);
+            return Mathf.clamp(tierOverrides.get(key, tierSmall), 0, numTiers - 1);
         }
 
-        if (isMountainOrWall(b)) return TIER_ENV;
-        if (b instanceof Prop || b instanceof TreeBlock) return getPropTier(b);
+        if (isMountainOrWall(b) || AnyBlocksShadows.isPine(b)) return TIER_ENV;
+        if (b instanceof Prop || b instanceof TreeBlock || b instanceof mindustry.world.blocks.environment.TallBlock || isCrystal(b) || isTree(b)) return getPropTier(b);
 
         return sizeToTier(b.size);
     }
 
     public static int unitTier(float elevation) {
-        return Mathf.clamp((int)(elevation * NUM_TIERS), 0, NUM_TIERS - 1);
+        return Mathf.clamp((int)(elevation * numTiers), 0, numTiers - 1);
     }
 
     private static int sizeToTier(int size) {
-        if (size <= 1) return TIER_SMALL;
-        if (size == 2) return TIER_MED;
-        if (size == 3) return TIER_LARGE;
-        if (size <= 5) return TIER_XL;
-        return TIER_ENV;
+        if (size <= 1) return tierSmall;
+        if (size == 2) return tierMed;
+        if (size == 3) return tierLarge;
+        return tierXL;
     }
 
     public static boolean isMountainOrWall(Block b) {
@@ -130,23 +128,39 @@ public final class ShadowLayerConfig {
     private static boolean computeIsMountainOrWall(Block b) {
         if (!b.isStatic() || !b.solid) return false;
         if (b instanceof StaticWall) return true;
-        if (b instanceof Prop || b instanceof TreeBlock) return false;
+        if (b instanceof TreeBlock || isTree(b)) return false;
+        if (b instanceof mindustry.world.blocks.environment.TallBlock || isCrystal(b)) return false;
+        if (b instanceof Prop) return false;
         String n = b.name != null ? b.name.toLowerCase() : "";
         return n.contains("wall") || n.contains("mountain") || n.contains("montana") || n.contains("cliff");
     }
 
-    private static int getPropTier(Block b) {
+    public static boolean isCrystal(Block b) {
+        if (b == null) return false;
+        if (b instanceof StaticWall) return false;
+        if (b instanceof mindustry.world.blocks.environment.Floor) return false;
+        if (b instanceof mindustry.world.blocks.environment.TallBlock) return true;
         String n = b.name != null ? b.name.toLowerCase() : "";
-        if (n.contains("rock") || n.contains("boulder") || n.contains("pebble") || n.contains("stone")) return TIER_SMALL;
-        if (n.contains("chunk")) return TIER_LARGE;
-        if (n.contains("spore") || n.contains("dead") || n.contains("shale")) return TIER_XL;
-        return TIER_MED;
+        return n.contains("crystal") || n.contains("spike") || n.contains("chunk") || n.contains("orb");
+    }
+
+    public static boolean isTree(Block b) {
+        if (b == null) return false;
+        if (b instanceof TreeBlock) return true;
+        String n = b.name != null ? b.name.toLowerCase() : "";
+        if (n.contains("wall") || n.contains("floor") || n.contains("press") || n.contains("moss")) return false;
+        return n.contains("tree") || n.contains("deathtree") || (n.contains("spore") && (n.contains("pine") || n.contains("tree") || n.contains("wood")));
+    }
+
+    private static int getPropTier(Block b) {
+        if (isTree(b)) return tierMed;
+        return tierSmall;
     }
 
     public static boolean isDistributionBlock(Block b) {
         if (b instanceof Conveyor || b instanceof Router || b instanceof Sorter || b instanceof Junction
                 || b instanceof StackConveyor || b instanceof OverflowGate || b instanceof ItemBridge) return true;
-        if (b instanceof PayloadConveyor || b instanceof PayloadRouter) return true;
+        if (b instanceof PayloadConveyor) return true;
         return isBridge(b);
     }
 

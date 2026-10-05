@@ -23,7 +23,7 @@ import mindustry.ui.Styles;
 
 public class DUI {
 
-    private static final String VERSION = "v1.5.159.7";
+    private static final String VERSION = "v1.6.160.5";
 
     private static Table cont;
     private static Table borderFrame;
@@ -33,8 +33,6 @@ public class DUI {
     private static CordSwitch cordSection;
 
     private static boolean shown = false;
-
-    public static boolean hasShown() { return shown; }
 
     public static void tryShow() {
         Log.info("[DUI] tryShow() llamado. shown=" + shown + " headless=" + Vars.headless);
@@ -50,7 +48,7 @@ public class DUI {
         cont.setBackground(Styles.black);
         cont.touchable = Touchable.enabled;
 
-        // ── MARCO DECORATIVO BLANCO (5px margen, 4px grosor) ──
+        // Marco decorativo blanco (5px margen, 4px grosor) porque soy goloso grrrr
         borderFrame = new Table();
         borderFrame.setFillParent(true);
         borderFrame.touchable = Touchable.disabled;
@@ -116,11 +114,10 @@ public class DUI {
         clBox.add(clHeader).left().padBottom(6f).row();
 
         String[] entries = {
-                Core.bundle.get("dui.news.1", "[white]• [lightgray]Renderizado de sombras dinámicas en tiempo real."),
-                Core.bundle.get("dui.news.2", "[white]• [lightgray]Culling direccional inteligente en montañas."),
-                Core.bundle.get("dui.news.3", "[white]• [lightgray]Pipeline de 5 capas FBO con desenfoque Gaussiano."),
-                Core.bundle.get("dui.news.4", "[white]• [lightgray]Caché de chunks para sincronización instantánea."),
-                Core.bundle.get("dui.news.5", "[white]• [lightgray]Soporte de ciclo día/noche con tinte de sombra.")
+                Core.bundle.get("dui.news.1", "[white]• [lightgray]Mejora de calidad."),
+                Core.bundle.get("dui.news.2", "[white]• [lightgray]Culling direccional."),
+                Core.bundle.get("dui.news.3", "[white]• [lightgray]Optimización grafica."),
+                Core.bundle.get("dui.news.4", "[white]• [lightgray]First Stable Version.")
         };
 
         java.util.ArrayList<arc.scene.Element> seq = new java.util.ArrayList<>();
@@ -147,7 +144,7 @@ public class DUI {
         seq.add(clCredTitle);
         clBox.add(clCredTitle).left().padBottom(4f).row();
 
-        // ── FILA DE COLABORADORES (ACOMODADO CORRECTAMENTE) ──
+        // Fila de colaboradores
         Table clCollabRow = new Table();
 
         Label cl1 = new Label("[#a2e798]owo [gray](Sentinel)", Styles.outlineLabel);
@@ -241,16 +238,14 @@ public class DUI {
 
         cont.actions(Actions.sequence(
                 Actions.delay(22.75f),
-                Actions.run(new Runnable() {
-                    @Override public void run() {
-                        if (cordSection != null) {
-                            cordSection.actions(Actions.fadeOut(0.22f, Interp.pow2In));
-                        }
+                Actions.run(() -> {
+                    if (cordSection != null) {
+                        cordSection.actions(Actions.fadeOut(0.22f, Interp.pow2In));
                     }
                 }),
                 Actions.delay(0.25f),
                 Actions.fadeOut(0.50f, Interp.pow2In),
-                Actions.run(new Runnable() { @Override public void run() { cleanup(); } })
+                Actions.run(DUI::cleanup)
         ));
     }
 
@@ -269,16 +264,16 @@ public class DUI {
         cont.actions(Actions.sequence(
                 Actions.delay(0.22f),
                 Actions.fadeOut(0.48f, Interp.pow2In),
-                Actions.run(new Runnable() { @Override public void run() { cleanup(); } })
+                Actions.run(DUI::cleanup)
         ));
     }
 
     private static void cleanup() {
-        if (borderFrame != null)      { borderFrame.remove();      borderFrame = null; }
-        if (overlayCenter != null)    { overlayCenter.remove();    overlayCenter = null; }
+        if (borderFrame != null) { borderFrame.remove(); borderFrame = null; }
+        if (overlayCenter != null) { overlayCenter.remove(); overlayCenter = null; }
         if (overlayChangelog != null) { overlayChangelog.remove(); overlayChangelog = null; }
-        if (cordSection != null)      { cordSection.remove();      cordSection = null; }
-        if (cont != null)             { cont.remove();             cont = null; }
+        if (cordSection != null) { cordSection.remove(); cordSection = null; }
+        if (cont != null) { cont.remove(); cont = null; }
         Log.info("[DUI] Pantalla splash finalizada.");
     }
 
@@ -384,12 +379,10 @@ public class DUI {
 
             actions(Actions.sequence(
                     Actions.delay(delay),
-                    Actions.run(new Runnable() {
-                        @Override public void run() {
-                            dropped = true;
-                            pullY = -160f; pullX = 12f;
-                            velY = 22f; velX = -3f;
-                        }
+                    Actions.run(() -> {
+                        dropped = true;
+                        pullY = -160f; pullX = 12f;
+                        velY = 22f; velX = -3f;
                     }),
                     Actions.fadeIn(0.45f, Interp.pow3Out)
             ));

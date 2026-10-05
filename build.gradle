@@ -4,29 +4,35 @@ version = '1.0'
 
 sourceSets.main.java.srcDirs = ["src"]
 
-repositories {
-    mavenCentral()
-    maven { url 'https://jitpack.io' }
-    maven { url "https://maven.xpdustry.com/mindustry" }
-}
-
-java {
-    targetCompatibility = 8
-    sourceCompatibility = 1.8
+compileJava {
+    sourceCompatibility = "8"
+    targetCompatibility = "8"
 }
 
 ext {
-    mVersion = project.hasProperty("mindustryVersion") ? mindustryVersion : 'v157'
-    aVersion = project.hasProperty("arcVersion") ? arcVersion : 'v157'
+    mindustryVersion = 'v159.7'
     mArtifact = project.hasProperty("modArtifact") ? modArtifact : project.name
     
     isWindows = System.getProperty("os.name").toLowerCase().contains("windows")
     sdkRoot = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
 }
 
+repositories {
+    mavenCentral()
+    ivy {
+        url = 'https://github.com/'
+        patternLayout {
+            artifact '/[organisation]/[module]/releases/download/[revision]/dependencies.jar'
+        }
+        metadataSources { artifact() }
+        content {
+            includeVersion("Anuken", "Mindustry", mindustryVersion)
+        }
+    }
+}
+
 dependencies {
-    compileOnly "com.github.Anuken.Arc:arc-core:$aVersion"
-    compileOnly "com.github.Anuken.Mindustry:core:$mVersion"
+    compileOnly "Anuken:Mindustry:$mindustryVersion"
 }
 
 // 1. Tarea principal: Crea el mod para PC
@@ -64,10 +70,12 @@ tasks.register('deploy') {
         def finalJar = new File(projectDir, "build/libs/${mArtifact}.jar")
         def dexFile = new File(projectDir, "build/libs/classes.dex")
 
+        def androidJar = null
         // Buscar d8
         if (sdkRoot && new File(sdkRoot).exists()) {
             def platformRoot = new File("$sdkRoot/platforms/").listFiles()?.sort()?.reverse()?.find { f -> new File(f, "android.jar").exists() }
             if (platformRoot) {
+                androidJar = new File(platformRoot, "android.jar")
                 def d8 = isWindows ? "d8.bat" : "d8"
                 def buildTools = new File("$sdkRoot/build-tools/").listFiles()?.sort()?.reverse()?.find { f -> new File(f, d8).exists() }
                 if (buildTools) d8Path = new File(buildTools, d8).absolutePath
@@ -87,8 +95,17 @@ tasks.register('deploy') {
         
         // Ejecutar d8 (salida a una carpeta temporal para sacar el classes.dex)
         def tempDir = new File(projectDir, "build/libs/dex-temp")
+        delete tempDir
         tempDir.mkdirs()
-        def cmd = "$d8Path --min-api 14 --output ${tempDir.absolutePath} ${finalJar.absolutePath}"
+
+        // Empacar clases limpias en un jar temporal para D8 (evita que falle si finalJar ya contenía un dex previo)
+        def rawClassesJar = new File(tempDir, "classes-raw.jar")
+        def packCmd = "jar cf \"${rawClassesJar.absolutePath}\" -C \"${sourceSets.main.output.classesDirs.singleFile.absolutePath}\" ."
+        def packProc = packCmd.execute(null, projectDir)
+        packProc.waitForProcessOutput(System.out, System.err)
+
+        def libParam = (androidJar != null && androidJar.exists()) ? "--lib \"${androidJar.absolutePath}\"" : ""
+        def cmd = "$d8Path --min-api 14 $libParam --output \"${tempDir.absolutePath}\" \"${rawClassesJar.absolutePath}\""
         def process = cmd.execute(null, projectDir)
         process.waitForProcessOutput(System.out, System.err)
         
@@ -105,4 +122,12 @@ tasks.register('deploy') {
             throw new GradleException("Fallo al generar el soporte de Android.")
         }
     }
+}
+
+tasks.register('dex') {
+    dependsOn "deploy"
+}
+
+tasks.register('dexify') {
+    dependsOn "deploy"
 }

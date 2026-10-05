@@ -11,7 +11,7 @@ public class Main extends Mod {
         super();
         Log.info("[DynamicShadows] Constructor llamado.");
 
-        // Registrar ClientLoadEvent en el constructor (mismo patrón que mod Jooling)
+        // (mismo patrón que mod Jooling) xd
         Events.on(EventType.ClientLoadEvent.class, e -> {
             Log.info("[DynamicShadows] ClientLoadEvent disparado!");
             if (!mindustry.Vars.headless) {
@@ -31,6 +31,10 @@ public class Main extends Mod {
                         t.checkPref("dynamic_shadows_enabled", true,  val -> {
                             DynamicShadowRenderer.enabled = val;
                             DynamicShadowRenderer.updateUnitShadows();
+                        });
+                        t.checkPref("zoom_shadow_fade",        true,  val -> {
+                            DynamicShadowRenderer.zoomFadeEnabled = val;
+                            DynamicShadowRenderer.shadDirty = true;
                         });
                         t.checkPref("day_night_cycle",         true,  val -> DynamicShadowRenderer.dayNightCycle = val);
                         t.checkPref("static_shadows",           false, val -> {
@@ -87,20 +91,21 @@ public class Main extends Mod {
             }
 
             // Restaurar configuraciones guardadas
-            DynamicShadowRenderer.graphicsQuality    = Core.settings.getInt ("graphics_quality",            2);
-            DynamicShadowRenderer.enabled            = Core.settings.getBool("dynamic_shadows_enabled",     true);
-            DynamicShadowRenderer.dayNightCycle      = Core.settings.getBool("day_night_cycle",             true);
-            DynamicShadowRenderer.rotateShadows       = !Core.settings.getBool("static_shadows",            false);
-            DynamicShadowRenderer.unitShadowsEnabled = Core.settings.getBool("dynamic_unit_shadows",        true);
+            DynamicShadowRenderer.graphicsQuality = Core.settings.getInt ("graphics_quality",2);
+            DynamicShadowRenderer.enabled = Core.settings.getBool("dynamic_shadows_enabled",true);
+            DynamicShadowRenderer.zoomFadeEnabled = Core.settings.getBool("zoom_shadow_fade",true);
+            DynamicShadowRenderer.dayNightCycle = Core.settings.getBool("day_night_cycle",true);
+            DynamicShadowRenderer.rotateShadows = !Core.settings.getBool("static_shadows",false);
+            DynamicShadowRenderer.unitShadowsEnabled = Core.settings.getBool("dynamic_unit_shadows",true);
             int pScaleVal = Core.settings.getInt("prop_shadow_scale", 100);
-            DynamicShadowRenderer.propShadowScale    = pScaleVal / 100f;
-            DynamicShadowRenderer.oldShadowsEnabled  = (pScaleVal == 0);
-            DynamicShadowRenderer.SHADOW_LENGTH      = Core.settings.getInt ("shadow_length",               10);
-            DynamicShadowRenderer.SHADOW_ALPHA       = Core.settings.getInt ("shadow_opacity_percent",       45) / 100f;
-            DynamicShadowRenderer.blurRadius         = Core.settings.getInt ("blur_radius",                  35) / 10f;
-            DynamicShadowRenderer.shadowTint         = Core.settings.getInt ("shadow_tint_percent",          60) / 100f;
-            DynamicShadowRenderer.contactShadow      = Core.settings.getInt ("contact_shadow_percent",       45) / 100f;
-            DynamicShadowRenderer.darkFadeStrength   = Core.settings.getInt ("dark_fade_percent",            80) / 100f;
+            DynamicShadowRenderer.propShadowScale = pScaleVal / 100f;
+            DynamicShadowRenderer.oldShadowsEnabled = (pScaleVal == 0);
+            DynamicShadowRenderer.SHADOW_LENGTH = Core.settings.getInt ("shadow_length",10);
+            DynamicShadowRenderer.SHADOW_ALPHA = Core.settings.getInt ("shadow_opacity_percent",45) / 100f;
+            DynamicShadowRenderer.blurRadius = Core.settings.getInt ("blur_radius",35) / 10f;
+            DynamicShadowRenderer.shadowTint = Core.settings.getInt ("shadow_tint_percent",60) / 100f;
+            DynamicShadowRenderer.contactShadow = Core.settings.getInt ("contact_shadow_percent",45) / 100f;
+            DynamicShadowRenderer.darkFadeStrength = Core.settings.getInt ("dark_fade_percent",80) / 100f;
 
             DynamicShadowRenderer.updateUnitShadows();
 
@@ -114,7 +119,10 @@ public class Main extends Mod {
     public void init() {
         Log.info("[DynamicShadows] init() llamado.");
 
+        applyBlockLayers();
+
         Events.on(EventType.WorldLoadEvent.class, e -> {
+            applyBlockLayers();
             DynamicShadowRenderer.ChunkCache.init();
         });
         Events.on(EventType.BlockBuildEndEvent.class, e -> {
@@ -134,5 +142,26 @@ public class Main extends Mod {
 
         Events.run(EventType.Trigger.draw, () -> DynamicShadowRenderer.weatherMult = 1f);
         Events.run(EventType.Trigger.draw, DynamicShadowRenderer::queue);
+    }
+
+    public static void applyBlockLayers() {
+        if (mindustry.Vars.content == null) return;
+        for (mindustry.world.Block b : mindustry.Vars.content.blocks()) {
+            if (ShadowLayerConfig.isCrystal(b)) {
+                if (b instanceof mindustry.world.blocks.environment.TallBlock) {
+                    mindustry.world.blocks.environment.TallBlock tb = (mindustry.world.blocks.environment.TallBlock) b;
+                    tb.layer = Layers.crystalProps;
+                    tb.shadowAlpha = 0f;
+                } else if (b instanceof mindustry.world.blocks.environment.Prop) {
+                    mindustry.world.blocks.environment.Prop p = (mindustry.world.blocks.environment.Prop) b;
+                    p.layer = Layers.crystalProps;
+                }
+            } else if (ShadowLayerConfig.isTree(b)) {
+                if (b instanceof mindustry.world.blocks.environment.Prop) {
+                    mindustry.world.blocks.environment.Prop p = (mindustry.world.blocks.environment.Prop) b;
+                    p.layer = Layers.treeLayer;
+                }
+            }
+        }
     }
 }

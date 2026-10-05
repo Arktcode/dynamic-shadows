@@ -13,34 +13,44 @@ public class AnyBlocksShadows {
     private static final ObjectMap<Block, Float> modCache = new ObjectMap<>();
     private static final ObjectMap<mindustry.type.UnitType, TextureRegion> unitShadowCache = new ObjectMap<>();
 
+    public static boolean isPine(Block blk) {
+        if (blk == null) return false;
+        if (blk instanceof TreeBlock) return false;
+        String n = blk.name != null ? blk.name.toLowerCase() : "";
+        return n.contains("pine") && !n.contains("spore");
+    }
+
     public static float getModifier(Block blk) {
         synchronized (modCache) {
             if (modCache.containsKey(blk))
                 return modCache.get(blk, 1f);
         }
 
+        //Esta mierda funciona asi que por eso es mi mejor opción
+
         float mod;
         if (blk instanceof PowerNode || blk instanceof LightBlock || ShadowLayerConfig.isMine(blk)) {
             mod = 0.0f;
+        } else if (isPine(blk)) {
+            mod = 0.15f; // 25% más pequeña que las montañas (0.20f * 0.75 = 0.15f)
         } else if (ShadowLayerConfig.isLogicOrMemory(blk)) {
             mod = 0.04f;
         } else if (blk.isStatic() && blk.solid) {
             mod = 0.20f;
         } else {
             switch (blk.size) {
-                case 1:  mod = 0.04f;  break;
-                case 2:  mod = 0.08f;  break;
-                case 3:  mod = 0.06f;  break;
-                case 4:  mod = 0.10f;  break;
-                case 5:  mod = 0.135f; break;
-                case 6:  mod = 0.16f;  break;
-                case 7:  mod = 0.18f;  break;
-                case 8:  mod = 0.20f;  break;
-                case 9:  mod = 0.22f;  break;
-                default: mod = 0.24f;  break;
+                case 1: mod = 0.04f; break;
+                case 2: mod = 0.08f; break;
+                case 3: mod = 0.06f; break;
+                case 4: mod = 0.10f; break;
+                case 5: mod = 0.135f; break;
+                case 6: mod = 0.16f; break;
+                case 7: mod = 0.18f; break;
+                case 8: mod = 0.20f; break;
+                case 9: mod = 0.22f; break;
+                default: mod = 0.24f; break;
             }
         }
-
         synchronized (modCache) {
             modCache.put(blk, mod);
         }
@@ -48,16 +58,16 @@ public class AnyBlocksShadows {
     }
 
     public static void draw(float cx, float cy, float size, float len, float cosA, float sinA) {
-        draw(cx, cy, size, len, cosA, sinA, null, size);
+        draw(cx, cy, len, cosA, sinA, null, size);
     }
 
     /**
-     * Sombra por extrusión de silueta:
-     * - Base: rectángulo del bloque (se borra del FBO para evitar autosombra)
+     * Sombra por extrusión de silueta
+     * - Base de rectángulo del bloque (se borra del FBO para evitar autosombra) xd
      * - Laterales: quads que unen la base con el cap
      * - Cap: sprite proyectado en la dirección del sol
      */
-    public static void draw(float cx, float cy, float size, float len,
+    public static void draw(float cx, float cy, float len,
                             float cosA, float sinA, TextureRegion region, float rawSize) {
         float rhs = rawSize * 0.5f;
         float sdx = cosA * len;
@@ -110,11 +120,11 @@ public class AnyBlocksShadows {
         PropShadowType type;
         String name = block.name.toLowerCase();
 
-        if (block instanceof TreeBlock) {
+        if (block instanceof TreeBlock || ShadowLayerConfig.isTree(block)) {
             type = PropShadowType.TREE;
         } else if (name.contains("orb") || name.contains("sphere") || name.contains("ball")) {
             type = PropShadowType.ORB;
-        } else if (name.contains("spike") || name.contains("thorn") || name.contains("needle")) {
+        } else if (name.contains("spike") || name.contains("thorn") || name.contains("needle") || name.contains("cluster")) {
             type = PropShadowType.SPIKE;
         } else if (region != null && region.found()) {
             float ar = region.height / (float) Math.max(region.width, 1);
@@ -131,15 +141,15 @@ public class AnyBlocksShadows {
 
     public static void drawPropShadow(float cx, float cy, TextureRegion region,
             PropShadowType type, float propLen, float cosA, float sinA, float angle,
-            float contactAlpha) {
+            float contactAlpha, float alphaMult) {
 
         float propW = region.width  * Draw.scl;
 
         if (contactAlpha > 0.005f) {
-            Draw.color(0.02f, 0.015f, 0.04f, contactAlpha);
+            Draw.color(0.02f, 0.015f, 0.04f, contactAlpha * alphaMult);
             Fill.circle(cx, cy, propW * 0.40f);
-            Draw.color(0.04f, 0.03f, 0.08f, 1f);
         }
+        Draw.color(0.04f, 0.03f, 0.08f, alphaMult);
         switch (type) {
             case ORB:
                 Fill.circle(cx + cosA * propLen * 0.35f,
