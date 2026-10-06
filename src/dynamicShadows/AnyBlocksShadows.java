@@ -102,7 +102,14 @@ public class AnyBlocksShadows {
     public static arc.graphics.g2d.TextureRegion getOriginalShadow(mindustry.type.UnitType type) {
         synchronized (unitShadowCache) {
             if (!unitShadowCache.containsKey(type)) {
-                unitShadowCache.put(type, type.shadowRegion);
+                arc.graphics.g2d.TextureRegion clearReg = arc.Core.atlas.find("clear");
+                if (type.shadowRegion != null && type.shadowRegion.found() && type.shadowRegion != clearReg) {
+                    unitShadowCache.put(type, type.shadowRegion);
+                } else if (type.fullIcon != null && type.fullIcon.found()) {
+                    unitShadowCache.put(type, type.fullIcon);
+                } else if (type.region != null && type.region.found()) {
+                    unitShadowCache.put(type, type.region);
+                }
             }
             return unitShadowCache.get(type);
         }
