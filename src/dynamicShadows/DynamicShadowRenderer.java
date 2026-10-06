@@ -406,17 +406,20 @@ public class DynamicShadowRenderer {
                                         chunk = ChunkCache.chunks[cx][cy];
                                     }
 
+                                    boolean isInteriorChunk = cx > chX1 && cx < chX2 && cy > chY1 && cy < chY2;
                                     Seq<ChunkCache.CasterEntry> list = chunk.tierCasters[tier];
                                     for (int i = 0; i < list.size; i++) {
                                         ChunkCache.CasterEntry e = list.get(i);
                                         if (e.mod == 0f) continue;
 
-                                        float whs = e.size * 0.5f + 1f;
-                                        float bx1 = Math.min(e.cx - whs, e.cx - whs + cosA * shadowScale);
-                                        float by1 = Math.min(e.cy - whs, e.cy - whs + sinA * shadowScale);
-                                        float bx2 = Math.max(e.cx + whs, e.cx + whs + cosA * shadowScale);
-                                        float by2 = Math.max(e.cy + whs, e.cy + whs + sinA * shadowScale);
-                                        if (bx2 < screenX1 || bx1 > screenX2 || by2 < screenY1 || by1 > screenY2) continue;
+                                        if (!isInteriorChunk) {
+                                            float whs = e.size * 0.5f + 1f;
+                                            float bx1 = Math.min(e.cx - whs, e.cx - whs + cosA * shadowScale);
+                                            float by1 = Math.min(e.cy - whs, e.cy - whs + sinA * shadowScale);
+                                            float bx2 = Math.max(e.cx + whs, e.cx + whs + cosA * shadowScale);
+                                            float by2 = Math.max(e.cy + whs, e.cy + whs + sinA * shadowScale);
+                                            if (bx2 < screenX1 || bx1 > screenX2 || by2 < screenY1 || by1 > screenY2) continue;
+                                        }
 
                                         // Solo dibujar montañas cuya cara apunta hacia el exterior
                                         if (tier == ShadowLayerConfig.TIER_ENV && !e.isProp) {
@@ -572,12 +575,15 @@ public class DynamicShadowRenderer {
     }
 
     private static void eraseTierFootprints(int chX1, int chY1, int chX2, int chY2, int tier, float sX1, float sY1, float sX2, float sY2) {
+        int startT = (tier == ShadowLayerConfig.tierXL ? 0 : tier);
+        int maxT = (tier < ShadowLayerConfig.tierLarge ? tier + 1 : ShadowLayerConfig.numTiers);
         for (int cx = chX1; cx <= chX2; cx++) {
             for (int cy = chY1; cy <= chY2; cy++) {
                 if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
                 ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
                 if (!chunk.valid) continue;
-                for (int t = (tier == ShadowLayerConfig.tierXL ? 0 : tier); t < ShadowLayerConfig.numTiers; t++) {
+                boolean isInterior = cx > chX1 && cx < chX2 && cy > chY1 && cy < chY2;
+                for (int t = startT; t < maxT; t++) {
                     Seq<ChunkCache.CasterEntry> list = chunk.tierCasters[t];
                     for (int i = 0; i < list.size; i++) {
                         ChunkCache.CasterEntry e = list.get(i);
@@ -586,8 +592,10 @@ public class DynamicShadowRenderer {
                         // En Tier XL solo borrar la huella de bloques de puente en tiers inferiores
                         if (t < tier && !ShadowLayerConfig.isBridge(e.block)) continue;
 
-                        float whs = e.size * 0.5f + 1f;
-                        if (e.cx + whs < sX1 || e.cx - whs > sX2 || e.cy + whs < sY1 || e.cy - whs > sY2) continue;
+                        if (!isInterior) {
+                            float whs = e.size * 0.5f + 1f;
+                            if (e.cx + whs < sX1 || e.cx - whs > sX2 || e.cy + whs < sY1 || e.cy - whs > sY2) continue;
+                        }
                         float eraseSize = Math.max(0.1f, e.rawSize - 0.2f);
                         Fill.rect(e.cx, e.cy, eraseSize, eraseSize);
                     }
@@ -626,12 +634,13 @@ public class DynamicShadowRenderer {
                 if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
                 ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
                 if (chunk == null || !chunk.valid || chunk.mountainTiles.isEmpty()) continue;
+                boolean isInterior = cx > chX1 && cx < chX2 && cy > chY1 && cy < chY2;
                 IntSeq list = chunk.mountainTiles;
                 for (int i = 0; i < list.size; i++) {
                     int pos = list.get(i);
                     float tx = Point2.x(pos) * ts;
                     float ty = Point2.y(pos) * ts;
-                    if (tx + ts < sX1 || tx - ts > sX2 || ty + ts < sY1 || ty - ts > sY2) continue;
+                    if (!isInterior && (tx + ts < sX1 || tx - ts > sX2 || ty + ts < sY1 || ty - ts > sY2)) continue;
                     Fill.rect(tx, ty, ts, ts);
                 }
             }
@@ -639,20 +648,20 @@ public class DynamicShadowRenderer {
     }
 
     private static void eraseFloorTiles(int chX1, int chY1, int chX2, int chY2, float sX1, float sY1, float sX2, float sY2) {
+        float ts = Vars.tilesize;
         for (int cx = chX1; cx <= chX2; cx++) {
             for (int cy = chY1; cy <= chY2; cy++) {
                 if (cx < 0 || cx >= ChunkCache.mapW || cy < 0 || cy >= ChunkCache.mapH) continue;
                 ChunkCache.CasterChunk chunk = ChunkCache.chunks[cx][cy];
                 if (chunk == null || !chunk.valid || chunk.eraseFloorTiles.isEmpty()) continue;
+                boolean isInterior = cx > chX1 && cx < chX2 && cy > chY1 && cy < chY2;
                 IntSeq list = chunk.eraseFloorTiles;
                 for (int i = 0; i < list.size; i++) {
                     int p = list.get(i);
-                    int x = Point2.x(p);
-                    int y = Point2.y(p);
-                    float wx = x * (float) 8.0;
-                    float wy = y * (float) 8.0;
-                    if (wx + (float) 8.0 < sX1 || wx - (float) 8.0 > sX2 || wy + (float) 8.0 < sY1 || wy - (float) 8.0 > sY2) continue;
-                    Fill.rect(wx, wy, (float) 8.0 + 0.1f, (float) 8.0 + 0.1f);
+                    float wx = Point2.x(p) * ts;
+                    float wy = Point2.y(p) * ts;
+                    if (!isInterior && (wx + ts < sX1 || wx - ts > sX2 || wy + ts < sY1 || wy - ts > sY2)) continue;
+                    Fill.rect(wx, wy, ts + 0.1f, ts + 0.1f);
                 }
             }
         }
