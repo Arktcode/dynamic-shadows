@@ -63,14 +63,12 @@ public class DynamicShadowRenderer {
     /** 0 = Baja (50%), 1 = Media (75%), 2 = Alta (100%, por defecto) */
     public static int graphicsQuality = 2;
 
-    // FrameBuffers por Tier para el pipeline de sombras en capas Z
+    // FrameBuffers por Tier para el pipeline de sombras en capas Z (Ping-Pong de 2 FBOs por Tier)
     private static final FrameBuffer[] tierFbo = new FrameBuffer[ShadowLayerConfig.numTiers];
     private static final FrameBuffer[] tierFbo2 = new FrameBuffer[ShadowLayerConfig.numTiers];
-    private static final FrameBuffer[] tierFbo3 = new FrameBuffer[ShadowLayerConfig.numTiers];
 
     private static final TextureRegion[] tierReg = new TextureRegion[ShadowLayerConfig.numTiers];
     private static final TextureRegion[] tierReg2 = new TextureRegion[ShadowLayerConfig.numTiers];
-    private static final TextureRegion[] tierReg3 = new TextureRegion[ShadowLayerConfig.numTiers];
 
     // Caché del FBO: se redibuja solo cuando hay cambios
     public static volatile boolean shadDirty = true;
@@ -209,11 +207,9 @@ public class DynamicShadowRenderer {
                 for (int t = 0; t < ShadowLayerConfig.numTiers; t++) {
                     tierFbo[t]  = new FrameBuffer(fw, fh); tierReg[t]  = flipped(tierFbo[t]);
                     tierFbo2[t] = new FrameBuffer(fw, fh); tierReg2[t] = flipped(tierFbo2[t]);
-                    tierFbo3[t] = new FrameBuffer(fw, fh); tierReg3[t] = flipped(tierFbo3[t]);
 
                     tierFbo[t].getTexture().setFilter(arc.graphics.Texture.TextureFilter.linear);
                     tierFbo2[t].getTexture().setFilter(arc.graphics.Texture.TextureFilter.linear);
-                    tierFbo3[t].getTexture().setFilter(arc.graphics.Texture.TextureFilter.linear);
                 }
             } catch (Exception e) { return; }
         }
@@ -341,9 +337,9 @@ public class DynamicShadowRenderer {
             });
         }
 
-        final float currentPpu = (float) Core.graphics.getWidth() / Core.camera.width;
-        float camMoveThreshold = Vars.mobile ? Math.max(0.20f, camW * 0.003f) : Math.max(0.08f, camW * 0.0015f);
-        float camZoomThreshold = Vars.mobile ? Math.max(0.30f, camW * 0.004f) : Math.max(0.15f, camW * 0.0025f);
+        final float pixelSize = Core.camera.width / Math.max(1f, (float) Core.graphics.getWidth());
+        float camMoveThreshold = Math.max(pixelSize * 0.8f, Vars.mobile ? 0.35f : 0.15f);
+        float camZoomThreshold = Math.max(pixelSize * 1.2f, Vars.mobile ? 0.45f : 0.25f);
 
         // Redibujar el FBO si la cámara se movió, el mapa cambió o hay puentes en animación
         final boolean needsRedraw = shadDirty
@@ -462,23 +458,9 @@ public class DynamicShadowRenderer {
 
                             // Borrar la huella del bloque para evitar autosombra
                             Draw.flush();
-                            Draw.blend(arc.graphics.Blending.disabled);
-                            Draw.color(0f, 0f, 0f, 0f);
-                            eraseTierFootprints(chX1, chY1, chX2, chY2, tier, screenX1, screenY1, screenX2, screenY2);
-
-                            // Borrar paredes rocosas en todos los tiers que dibujan sobre Z=30f para evitar sombras sobre montañas
-                            if (tier >= ShadowLayerConfig.tierLarge) {
-                                eraseWallTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
-                            }
-
-                            // Borra casillas de suelo luminoso, líquido o espacio
-                            eraseFloorTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
-
-                            Draw.flush();
-                            Draw.blend(arc.graphics.Blending.normal);
                             tierFbo[tier].end();
 
-                            // Pase de desenfoque horizontal
+                            // Pase de desenfoque horizontal (tierFbo -> tierFbo2)
                             tierFbo2[tier].begin();
                             Gl.clearColor(0f, 0f, 0f, 0f);
                             Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
@@ -486,13 +468,13 @@ public class DynamicShadowRenderer {
                             Draw.flush();
                             tierFbo2[tier].end();
 
-                            // Pase de desenfoque vertical
-                            tierFbo3[tier].begin();
+                            // Pase de desenfoque vertical (tierFbo2 -> tierFbo)
+                            tierFbo[tier].begin();
                             Gl.clearColor(0f, 0f, 0f, 0f);
                             Gl.clear(GL20.GL_COLOR_BUFFER_BIT);
                             applyShaderPass(0f, 1f, fSunElev, tierReg2[tier], camX, camY, camW, camH);
 
-                            // Re-borrar huellas tras el desenfoque para mantener techos limpios
+                            // Borrar huellas de bloques, paredes y suelos luminosos tras el desenfoque para mantener techos limpios
                             Draw.flush();
                             Draw.blend(arc.graphics.Blending.disabled);
                             Draw.color(0f, 0f, 0f, 0f);
@@ -500,10 +482,11 @@ public class DynamicShadowRenderer {
                             if (tier >= ShadowLayerConfig.tierLarge) {
                                 eraseWallTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
                             }
+                            eraseFloorTiles(chX1, chY1, chX2, chY2, screenX1, screenY1, screenX2, screenY2);
                             Draw.flush();
                             Draw.blend(arc.graphics.Blending.normal);
 
-                            tierFbo3[tier].end();
+                            tierFbo[tier].end();
                         }
                     } else {
                         tierHasContent[tier] = false;
@@ -511,9 +494,9 @@ public class DynamicShadowRenderer {
                 }
 
                 // Dibujar la textura final desenfocada en la posición de la cámara (solo si el Tier tiene contenido y está visible)
-                if (enabled && tierHasContent[tier] && tierFade > 0.005f && tierReg3[tier] != null && tierReg3[tier].texture != null) {
+                if (enabled && tierHasContent[tier] && tierFade > 0.005f && tierReg[tier] != null && tierReg[tier].texture != null) {
                     Draw.color(Color.white, alpha * tierFade);
-                    Draw.rect(tierReg3[tier], camX, camY, camW, camH);
+                    Draw.rect(tierReg[tier], camX, camY, camW, camH);
                     Draw.color();
                 }
 
@@ -714,10 +697,10 @@ public class DynamicShadowRenderer {
     private static void disposeFBOs() {
         for (int t = 0; t < ShadowLayerConfig.numTiers; t++) {
             tierHasContent[t] = false;
-            for (FrameBuffer b : new FrameBuffer[]{tierFbo[t], tierFbo2[t], tierFbo3[t]}) {
+            for (FrameBuffer b : new FrameBuffer[]{tierFbo[t], tierFbo2[t]}) {
                 if (b != null) try { b.dispose(); } catch (Exception ignored) {}
             }
-            tierFbo[t] = tierFbo2[t] = tierFbo3[t] = null;
+            tierFbo[t] = tierFbo2[t] = null;
         }
     }
 
