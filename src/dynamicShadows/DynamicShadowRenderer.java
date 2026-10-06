@@ -192,7 +192,7 @@ public class DynamicShadowRenderer {
         final int tx2 = Mathf.clamp((int)((camX+camW*.5f+margin)/Vars.tilesize),0,wMax);
         final int ty2 = Mathf.clamp((int)((camY+camH*.5f+margin)/Vars.tilesize),0,hMax);
 
-        final float fDark = darkness, fSunElev = rawSun, fDarkFade = darkFade;
+        final float fSunElev = rawSun, fDarkFade = darkFade;
         final float screenX1 = camX - camW * 0.5f - margin;
         final float screenY1 = camY - camH * 0.5f - margin;
         final float screenX2 = camX + camW * 0.5f + margin;
@@ -231,8 +231,6 @@ public class DynamicShadowRenderer {
         int chY1 = ty1 / ChunkCache.CHUNK_SIZE;
         int chX2 = tx2 / ChunkCache.CHUNK_SIZE;
         int chY2 = ty2 / ChunkCache.CHUNK_SIZE;
-
-        final float ts = Vars.tilesize;
 
         // Limpiar pools de la iteración previa
         freeUnitShadows();
@@ -306,7 +304,7 @@ public class DynamicShadowRenderer {
             bridgePosMap.remove(bid);
         }
 
-        // Recolectar datos de sombras de unidades fuera del lambda reutilizando el pool
+        // Recolectar datos de sombras de unidades fuera de la lambda reutilizando el pool
         if (unitShadowsEnabled) {
             mindustry.gen.Groups.unit.each(u -> {
                 if (u.x < screenX1 || u.x > screenX2 || u.y < screenY1 || u.y > screenY2) return;
@@ -346,7 +344,7 @@ public class DynamicShadowRenderer {
             });
         }
 
-        final float currentPpu = (float) Core.graphics.getWidth() / Core.camera.width;
+        Core.graphics.getWidth();
         float camMoveThreshold = Vars.mobile ? Math.max(0.20f, camW * 0.003f) : Math.max(0.08f, camW * 0.0015f);
         float camZoomThreshold = Vars.mobile ? Math.max(0.30f, camW * 0.004f) : Math.max(0.15f, camW * 0.0025f);
 
@@ -456,7 +454,7 @@ public class DynamicShadowRenderer {
                                 }
                             }
 
-                            // Sombras de enlaces de puente en Tier XL (sobre bloques 1x1 a 5x5)
+                            // sombras de enlaces de puente en Tier XL (sobre bloques 1x1 a 5x5)
                             if (tier == ShadowLayerConfig.tierXL && !bridgeLinks.isEmpty()) {
                                 float bridgeFLen = shadowScale * 0.025f;
                                 for (int i = 0; i < bridgeLinks.size; i++) {
@@ -465,7 +463,7 @@ public class DynamicShadowRenderer {
                                 }
                             }
 
-                            // Borrar la huella del bloque para evitar autosombra
+                            // Borrar la huella del bloque para evitar sombras automáticas.
                             Draw.flush();
                             Draw.blend(arc.graphics.Blending.disabled);
                             Draw.color(0f, 0f, 0f, 0f);
@@ -786,7 +784,7 @@ public class DynamicShadowRenderer {
 
         String n = fl.name != null ? fl.name.toLowerCase() : "";
 
-        // metal-floor-6, metal-floor-12 y runa crux no reciben sombras, ya que obviamente quedaria raro
+        // metal-floor-6, metal-floor-12 y runa crux no reciben sombras, ya que obviamente quedaría raro
         boolean isMetal6  = n.contains("metal-floor-6")  || n.contains("metal-tile-6")  || n.contains("metal6")  || (n.endsWith("-6")  && n.contains("metal"));
         boolean isMetal12 = n.contains("metal-floor-12") || n.contains("metal-tile-12") || n.contains("metal12") || (n.endsWith("-12") && n.contains("metal"));
         boolean isCruxRune = n.contains("crux") || n.contains("rune");
@@ -886,25 +884,6 @@ public class DynamicShadowRenderer {
             }
         }
 
-        public static void requestRebuildAsync(int cx, int cy) {
-            if (!initialized || threadPool == null || threadPool.isShutdown()) return;
-            long key = (((long) cx) << 32) | (cy & 0xFFFFFFFFL);
-            if (pendingChunks.putIfAbsent(key, Boolean.TRUE) != null) return;
-
-            threadPool.submit(() -> {
-                try {
-                    rebuildChunkSync(cx, cy);
-                } catch (Exception ignored) {
-                } finally {
-                    pendingChunks.remove(key);
-                }
-            });
-        }
-
-        public static void rebuildChunk(int cx, int cy) {
-            rebuildChunkSync(cx, cy);
-        }
-
         public static void rebuildChunkSync(int cx, int cy) {
             if (!initialized || Vars.world == null) return;
             CasterChunk newChunk = new CasterChunk();
@@ -960,7 +939,7 @@ public class DynamicShadowRenderer {
                     e.cx = isBuild ? tile.build.x : tile.worldx();
                     e.cy = isBuild ? tile.build.y : tile.worldy();
                     e.rawSize = isBuild ? tile.build.block.size * Vars.tilesize : Vars.tilesize;
-                    // Montañas usan traslape extra (+2.0f) para eliminar costuras de rasterizado subpíxel
+                    // Montañas usan traslapé extra (+2.0f) para eliminar costuras de rasterizado subpíxel
                     e.size = e.rawSize + (isMtn ? 2.0f : 0.4f);
                     e.elev = isBuild ? getElev(tile.build.block, 1f) : getElev(tile.block(), 1.6f);
                     e.mod = AnyBlocksShadows.getModifier(blk);
