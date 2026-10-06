@@ -117,7 +117,8 @@ public class DUI {
                 Core.bundle.get("dui.news.1", "[white]• [lightgray]Mejora de calidad."),
                 Core.bundle.get("dui.news.2", "[white]• [lightgray]Culling direccional."),
                 Core.bundle.get("dui.news.3", "[white]• [lightgray]Optimización grafica."),
-                Core.bundle.get("dui.news.4", "[white]• [lightgray]First Stable Version.")
+                Core.bundle.get("dui.news.4", "[white]• [lightgray]First Stable Version."),
+                Core.bundle.get("dui.news.5", "[white]• [crimson]1.6.160.5 bug Fix.")
         };
 
         java.util.ArrayList<arc.scene.Element> seq = new java.util.ArrayList<>();
