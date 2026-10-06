@@ -463,7 +463,6 @@ public class DynamicShadowRenderer {
                                 }
                             }
 
-                            // Borrar la huella del bloque para evitar sombras automáticas.
                             Draw.flush();
                             Draw.blend(arc.graphics.Blending.disabled);
                             Draw.color(0f, 0f, 0f, 0f);
@@ -588,7 +587,6 @@ public class DynamicShadowRenderer {
                 }
             }
         });
-
     }
 
     private static void eraseTierFootprints(int chX1, int chY1, int chX2, int chY2, int tier, float sX1, float sY1, float sX2, float sY2) {
