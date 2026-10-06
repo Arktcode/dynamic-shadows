@@ -17,7 +17,11 @@ import mindustry.world.blocks.environment.TreeBlock;
 import mindustry.world.blocks.payloads.PayloadConveyor;
 import mindustry.world.blocks.power.PowerNode;
 
-/** Clasificación de capas Z y asignación de Tiers para las sombras dinámicas. */
+/** Clasificación de capas Z y asignación de Tiers para las sombras dinámicas.
+ * @author @Arktcode Arksource
+ * @version 1.26
+ * @since 2026-10-05
+ */
 public final class ShadowLayerConfig {
 
     public static final int numTiers  = 5;

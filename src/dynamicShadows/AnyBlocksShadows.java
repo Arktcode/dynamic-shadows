@@ -8,7 +8,13 @@ import mindustry.world.Block;
 import mindustry.world.blocks.environment.TreeBlock;
 import mindustry.world.blocks.power.LightBlock;
 import mindustry.world.blocks.power.PowerNode;
-
+/**
+ * Se encarga de localiar los bloques del juego y ordenarlos por tamaño para dibujar su sombra.
+ * Analiza los props y excluye aparte los pine o trees para dibujar sus sombras individuales.
+ * @author @Arktcode Arksource
+ * @version 1.26
+ * @since 2026-10-05
+ **/
 public class AnyBlocksShadows {
     private static final ObjectMap<Block, Float> modCache = new ObjectMap<>();
     private static final ObjectMap<mindustry.type.UnitType, TextureRegion> unitShadowCache = new ObjectMap<>();

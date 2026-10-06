@@ -4,6 +4,12 @@ import arc.Core;
 import arc.graphics.gl.Shader;
 import mindustry.Vars;
 
+/**
+ * Se encarga de gestionar el manejo de GLSL .frag .vert shadow shader.
+ * @author @Arktcode Arksource
+ * @version 1.26
+ * @since 2026-10-05
+ */
 public class ShadowShader extends Shader {
     public float radius = 3.5f, blurDirX = 1f, blurDirY = 0f, edgeNoise = 0.38f;
     public float shadowTint = 0.60f, contactShadow = 0.45f, sunElevation = 0.5f;

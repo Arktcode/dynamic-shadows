@@ -13,8 +13,11 @@ package dynamicShadows;
  * 7. Sombras 4x4+ (Tier 3): 33.5f (por encima de cristales y props estándar)
  * 8. Sombras de montañas (Tier 4): 34.5f (por encima de props estándar y cristales; huella de montaña borrada)
  * 9. Árboles (deathtree, esporas): 71.0f (por encima de TODAS las sombras, incluidas montañas)
+ * @author @Arktcode Arksource
+ * @version 1.26
+ * @since 2026-10-05
  */
-/* No tocar estas instrucciones ya que indican el funcionamiento de cada layer (asi te evitas perder en capas) .__.*/
+/* No tocar estas instrucciones, ya que indican el funcionamiento de cada layer (asi te evitas perder en capas) .__.*/
 public class Layers {
     /** Tier 0: Sombras del terreno y bloques 1x1 */
     public static final float shadowGround = 29.0f;
