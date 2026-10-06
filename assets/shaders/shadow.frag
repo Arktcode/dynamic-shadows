@@ -20,13 +20,17 @@ void main() {
     float elevFactor  = 1.0 - clamp(u_sunElevation, 0.0, 1.0); // 0 at noon, 1 at horizon
     float dynamicRad  = u_radius * (1.0 + elevFactor * 1.4);    // up to 2.4× at horizon
 
-    // Bilinear hardware-interpolated Gaussian weights for 9-tap kernel using 5 texture samples
+    // Gaussian weights for kernel [0, ±1r, ±2r, ±3r, ±4r]
     vec2 step = u_blurDir * texel * dynamicRad;
-    vec4 col  = texture2D(u_texture, v_texCoord) * 0.227027;
-    col += texture2D(u_texture, v_texCoord + step * 1.3846154) * 0.3162162;
-    col += texture2D(u_texture, v_texCoord - step * 1.3846154) * 0.3162162;
-    col += texture2D(u_texture, v_texCoord + step * 3.2307692) * 0.0702703;
-    col += texture2D(u_texture, v_texCoord - step * 3.2307692) * 0.0702703;
+    vec4 col  = texture2D(u_texture, v_texCoord)                     * 0.2270;
+    col += texture2D(u_texture, v_texCoord + step        )           * 0.1945;
+    col += texture2D(u_texture, v_texCoord - step        )           * 0.1945;
+    col += texture2D(u_texture, v_texCoord + step * 2.0  )           * 0.1216;
+    col += texture2D(u_texture, v_texCoord - step * 2.0  )           * 0.1216;
+    col += texture2D(u_texture, v_texCoord + step * 3.0  )           * 0.054;
+    col += texture2D(u_texture, v_texCoord - step * 3.0  )           * 0.054;
+    col += texture2D(u_texture, v_texCoord + step * 4.0  )           * 0.013;
+    col += texture2D(u_texture, v_texCoord - step * 4.0  )           * 0.013;
 
     float alpha = col.a;
 
