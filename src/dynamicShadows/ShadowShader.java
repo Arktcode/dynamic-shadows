@@ -3,7 +3,6 @@ package dynamicShadows;
 import arc.Core;
 import arc.graphics.gl.Shader;
 import mindustry.Vars;
-
 /**
  * Se encarga de gestionar el manejo de GLSL .frag .vert shadow shader.
  * @author @Arktcode Arksource
@@ -15,41 +14,21 @@ public class ShadowShader extends Shader {
     public float shadowTint = 0.60f, contactShadow = 0.45f, sunElevation = 0.5f;
     public float camW = 1f, camH = 1f;
 
-    private int uRadius = -1, uBlurDir = -1, uEdgeNoise = -1, uShadowTint = -1;
-    private int uContactShadow = -1, uSunElevation = -1, uTime = -1, uResolution = -1;
-    private int uCameraPos = -1, uCamSize = -1;
-
     public ShadowShader() {
         super(Vars.tree.get("shaders/shadow.vert"), Vars.tree.get("shaders/shadow.frag"));
-        cacheUniforms();
-    }
-
-    private void cacheUniforms() {
-        uRadius = getUniformLocation("u_radius");
-        uBlurDir = getUniformLocation("u_blurDir");
-        uEdgeNoise = getUniformLocation("u_edgeNoise");
-        uShadowTint = getUniformLocation("u_shadowTint");
-        uContactShadow = getUniformLocation("u_contactShadow");
-        uSunElevation = getUniformLocation("u_sunElevation");
-        uTime = getUniformLocation("u_time");
-        uResolution = getUniformLocation("u_resolution");
-        uCameraPos = getUniformLocation("u_cameraPos");
-        uCamSize = getUniformLocation("u_camSize");
     }
 
     @Override
     public void apply() {
-        if (uRadius < 0) cacheUniforms();
-
-        setUniformf(uRadius, radius);
-        setUniformf(uBlurDir, blurDirX, blurDirY);
-        setUniformf(uEdgeNoise, edgeNoise);
-        setUniformf(uShadowTint, shadowTint);
-        setUniformf(uContactShadow, contactShadow);
-        setUniformf(uSunElevation, sunElevation);
-        setUniformf(uTime, arc.util.Time.time * 0.05f);
-        setUniformf(uResolution, Core.graphics.getWidth(), Core.graphics.getHeight());
-        setUniformf(uCameraPos, Core.camera.position.x, Core.camera.position.y);
-        setUniformf(uCamSize, camW, camH);
+        setUniformf("u_radius", radius);
+        setUniformf("u_blurDir", blurDirX, blurDirY);
+        setUniformf("u_edgeNoise", edgeNoise);
+        setUniformf("u_shadowTint", shadowTint);
+        setUniformf("u_contactShadow", contactShadow);
+        setUniformf("u_sunElevation", sunElevation);
+        setUniformf("u_time", arc.util.Time.time * 0.05f);
+        setUniformf("u_resolution", Core.graphics.getWidth(), Core.graphics.getHeight());
+        setUniformf("u_cameraPos", Core.camera.position.x, Core.camera.position.y);
+        setUniformf("u_camSize", camW, camH);
     }
 }

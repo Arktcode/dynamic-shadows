@@ -17,7 +17,7 @@ package dynamicShadows;
  * @version 1.26
  * @since 2026-10-05
  */
-/* No tocar estas instrucciones, ya que indican el funcionamiento de cada layer (asi te evitas perder en capas) .__.*/
+/* No tocar estas instrucciones ya que indican el funcionamiento de cada layer (asi te evitas perder en capas) .__.*/
 public class Layers {
     /** Tier 0: Sombras del terreno y bloques 1x1 */
     public static final float shadowGround = 29.0f;
