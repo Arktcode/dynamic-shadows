@@ -23,7 +23,7 @@ import mindustry.ui.Styles;
 
 public class DUI {
 
-    private static final String VERSION = "v1.6.160.5";
+    private static final String VERSION = "v1.6.2.160.5";
 
     private static Table cont;
     private static Table borderFrame;
